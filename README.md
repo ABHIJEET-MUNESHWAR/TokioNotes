@@ -42,6 +42,106 @@
 ```
 Pattern: **CQRS-lite + event sourcing** (commands append `DomainEvent`s on the bus; subscribers project read models). **Saga** orchestration is illustrated by `share()` in `tn-notes-service`. The Gateway is the composition root that wires every crate together; in production each crate would be deployed as its own service behind the same GraphQL schema.
 See [`PLAN.md`](./PLAN.md) for the exhaustive design.
+
+### Layered view
+
+TokioNotes is organised into **six logical layers**. Dependencies point *downward* only — the presentation layer knows about services, services know about domain + infra, but nothing ever depends on the presentation layer. This is Clean/Hexagonal Architecture enforced by the Cargo crate graph.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ 1. Presentation        Next.js · Apollo · graphql-ws · Yjs provider │
+├─────────────────────────────────────────────────────────────────────┤
+│ 2. API / Gateway       Actix-Web · async-graphql · AuthMiddleware   │
+├─────────────────────────────────────────────────────────────────────┤
+│ 3. Application / Svc   AuthService · NotesService · RoomManager ·   │
+│                        AiService   (CQRS commands, sagas, agents)   │
+├─────────────────────────────────────────────────────────────────────┤
+│ 4. Domain              User · Note · ACL · EditSession · DomainEvent │
+│                        (pure Rust, no I/O, no async)                │
+├─────────────────────────────────────────────────────────────────────┤
+│ 5. Infrastructure      Repos (in-mem / Postgres) · JwtIssuer ·      │
+│                        Argon2 · ShardRouter · yrs · EventBus adapt. │
+├─────────────────────────────────────────────────────────────────────┤
+│ 6. Cross-cutting       tn-common: errors, IDs, tracing, resilience, │
+│                        generic Repository<T,ID>, EventBus<E>        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Components — What / How / Why
+
+#### Layer 1 — Presentation (`frontend/`)
+
+| Component | What | How | Why |
+|---|---|---|---|
+| **Next.js App Router** | Web UI for auth, notes list, live editor. | Server-rendered shell + client components (`"use client"`); route `/notes/[id]` hosts the editor. | Modern React with file-system routing; SSR for the landing/auth pages keeps TTFB low while the editor is interactive. |
+| **Apollo Client + split link** | GraphQL transport with automatic protocol selection. | `HttpLink` for queries/mutations, `GraphQLWsLink` for subscriptions; `split()` routes by operation type. Auth `ApolloLink` injects `Authorization: Bearer` from `localStorage`. | One client, one cache, both HTTP and WebSocket — the cache auto-invalidates when a mutation response overlaps a cached query. |
+| **Yjs (`Y.Doc`)** | Client-side CRDT replica of note content. | On edit we diff against `encodeStateVector` and send `encodeStateAsUpdate` over `applyOps`; incoming `noteOps` frames are merged via `Y.applyUpdate`. | Yjs is the de-facto Rust/JS CRDT pairing (`yrs` is the Rust port); guarantees offline-safe, conflict-free merges so the UI never has to "reject" a keystroke. |
+
+#### Layer 2 — API / Gateway (`crates/gateway`)
+
+| Component | What | How | Why |
+|---|---|---|---|
+| **Actix-Web `HttpServer`** | HTTP + WebSocket runtime. | Multi-threaded Tokio accept loop; routes `POST /graphql`, `GET /graphql` (WS upgrade), `GET /`, `GET /health`. | Actix is the fastest mainstream Rust HTTP server; its actor model also cleanly supports WebSocket subscriptions. |
+| **`async-graphql` schema** | Type-safe GraphQL engine with Query, Mutation and Subscription roots. | `Schema::build(QueryRoot, MutationRoot, SubscriptionRoot).data(AppState).finish()`; each resolver is an `async fn`. | GraphQL (not REST) per requirement; `async-graphql` derives SDL from Rust types so the schema cannot drift from the code. |
+| **`AuthToken` extractor** | Per-request bearer-token carrier. | HTTP handler reads `Authorization` header → wraps in `AuthToken(String)` → `request.data(...)`. WS handler does the same from `connectionParams`. | Keeps auth concerns out of resolvers — `current_user(ctx)` is the single chokepoint and is trivially mockable in tests. |
+| **GraphQL Playground** | Interactive API explorer at `/`. | `async_graphql::http::playground_source(...)` inline HTML. | Zero-setup developer experience; also used by the Postman collection as a sanity-check target. |
+
+#### Layer 3 — Application / Services
+
+| Component | What | How | Why |
+|---|---|---|---|
+| **`AuthService<UserRepo>`** (`crates/auth-service`) | Registration, login, token verification. | Argon2id hashing via `tn_infra::password`, JWT issuance/verification via `JwtIssuer`, parameterised by any `UserRepo` (SRP). | Separated from notes logic so it can later be deployed as an independent micro-service without refactoring. |
+| **`NotesService<U,N,A,E,B>`** (`crates/notes-service`) | CQRS command handlers + saga orchestration for create / rename / share / revoke / delete. | Generic over every collaborator (repos + event bus); every command ends in `emit(event)` which appends to the store *and* publishes on the bus. | Generics instead of `dyn` = zero-cost abstraction, no virtual calls, and each test wires in an in-memory implementation without mocking frameworks. The event-emission chokepoint is the seam that enables CQRS read-side projection in the future. |
+| **`RoomManager` + `Room`** (`crates/collab-service`) | Per-note CRDT state machine. | `DashMap<NoteId, Arc<Room>>`; each `Room` owns a `tokio::sync::Mutex<yrs::Doc>` and a `tokio::sync::broadcast::Sender<OpFrame>`. | A room is a *unit of serialisation* — only one writer mutates a given doc at a time — but rooms themselves run in parallel on the Tokio multi-threaded runtime, so throughput scales with the number of active notes. |
+| **`AiService<A: AiAssistant>`** (`crates/ai-agent-service`) | Generative + agentic AI façade. | `tokio::join!` fans out `summarize` + `tag` + `suggest_edits`; `batch_summarize` uses `JoinSet` for bounded concurrency. | Agentic pattern (plan → act in parallel → observe) without coupling to a specific LLM; swap `HeuristicAssistant` for `OpenAiAssistant` by changing one `Arc::new`. |
+| **Saga coordinator (embedded)** | Multi-step workflow for `shareNote`. | `NotesService::share` executes Step 1 (lookup) → Step 2 (grant ACL) → Step 3 (emit event) with documented compensation semantics. | The Saga pattern replaces distributed transactions that SQL can't give us across shards / services; compensations are explicit and testable. |
+
+#### Layer 4 — Domain (`crates/domain`)
+
+| Component | What | How | Why |
+|---|---|---|---|
+| **`User`, `Note`, `NoteAcl`** | Aggregate roots and value objects. | Pure Rust structs with `Builder` constructors (`User::builder()`) that validate invariants (email format, non-empty title). | Domain purity (no async, no I/O, no dependencies on infra) means unit tests run in microseconds and the business rules are independently reviewable. |
+| **`Role` enum** | `Viewer / Editor / Owner` authorisation level. | Methods `can_edit()` / `can_share()`. | Encodes policy once at the type level; resolvers just ask the enum. |
+| **`EditSession<Idle \| Editing \| Committed>`** | Typestate for note mutation lifecycle. | Generic over a marker type; `open()` returns `Editing`, `commit()` returns `Committed`. Each state exposes only legal methods. | Makes illegal transitions (e.g. committing an un-opened session, mutating a committed one) **compile-time impossible** — the strongest guarantee the language offers. |
+| **`DomainEvent`** | Sum type of all domain facts. | `#[serde(tag="type")]` tagged enum: `NoteCreated`, `NoteShared`, `NoteOpsApplied`, …; every variant carries `EventId`, timestamp and aggregate id. | Event sourcing primitive: the entire history of the system can be replayed from this sequence, enabling read-model rebuilds, audit logs and temporal queries. |
+| **`AiAssistant` trait** | Domain-level port for AI. | Async trait with `summarize / autocomplete / tag / suggest_edits`. | Domain owns the **interface**, infra owns the **implementation** — classic Hexagonal Architecture, lets us depend-inversion the LLM vendor. |
+
+#### Layer 5 — Infrastructure (`crates/infra`)
+
+| Component | What | How | Why |
+|---|---|---|---|
+| **`UserRepo / NoteRepo / AclRepo / EventStore` traits** | Persistence ports. | Async traits; in-memory implementations using `DashMap` ship today, `sqlx` implementations are feature-gated behind `postgres`. | Trait-based polymorphism lets the same `NotesService` code run against PostgreSQL in prod and `DashMap` in CI — identical behaviour, 100× test speed. |
+| **`JwtIssuer`** | JWT HS256 signer/verifier. | Wraps `jsonwebtoken::encode/decode`; constant-time HMAC verify. | Encapsulates cryptographic policy (algorithm, TTL) so rotation is a single constructor call. |
+| **Argon2id hasher** | Password storage. | `argon2` crate with default params, OS-RNG salt. | Memory-hard hashing defeats GPU brute-force — current OWASP recommendation. |
+| **`ShardRouter`** | Logical DB shard selector. | `hash(user_id) % N` via `DefaultHasher`. | Ready for horizontal scale: when the Postgres adapter wires in, the same router decides which connection pool a query goes to — no service code changes. |
+| **`yrs` (Y-CRDT)** | Server-authoritative CRDT engine. | Used inside `Room`: `Doc::transact_mut().apply_update(...)`, `encode_state_as_update_v1`. | Industrial-strength CRDT with known complexity bounds and a compatible JS peer (`yjs`); we get cross-language convergence for free. |
+| **In-memory `EventBus` (`InProcBus<E>`)** | Pub/sub over `tokio::sync::broadcast`. | Generic over event type `E`, subscribe returns a `Stream`. | A trait seam for swapping to Redis/NATS later without touching `NotesService`. |
+
+#### Layer 6 — Cross-cutting (`crates/common`)
+
+| Component | What | How | Why |
+|---|---|---|---|
+| **`AppError` + `AppResult<T>`** | Unified, sealed error type. | `thiserror::Error` enum with variants for NotFound / Unauthorized / Forbidden / Conflict / Validation / Storage / Timeout / Upstream / Internal. | Every layer maps to this; the GraphQL edge maps it out. No `Box<dyn Error>` in hot paths; every branch is pattern-matchable. |
+| **Newtype IDs (`UserId`, `NoteId`, …)** | Distinct UUID wrappers. | Macro-generated; implement `Display`, `Serialize`, `async_graphql::scalar!`. | Prevents mixing an owner id with a note id at call sites — a bug class that would be silent with raw `Uuid`. |
+| **`telemetry::init`** | Standardised JSON logging. | `tracing-subscriber` with `EnvFilter` + JSON `fmt` layer. | One call per binary; `RUST_LOG` is the only knob; OTel layer drops in next to it without changing call sites. |
+| **Resilience combinators** | `with_timeout`, `with_retry`, `CircuitBreaker`. | Generic over `Future<Output = AppResult<T>>`; `tokio-retry` for jittered backoff; atomic state machine for the breaker. | One composable layer of fault tolerance that every adapter can reuse — no bespoke timeout/retry code scattered through services. |
+| **Generic `Repository<T, ID>` trait** | Uniform persistence contract. | `async fn get / save / delete`. | Makes "in-memory vs SQL" an *implementation* choice, not a design one; compatible with the Unit-of-Work pattern. |
+| **Generic `EventBus<E>` trait** | Uniform pub/sub contract. | `async fn publish`, `fn subscribe() -> Stream`. | Same rationale: transport-agnostic CQRS. Prod can mix Redis for fan-out and the in-proc bus for tests without any conditional compilation in services. |
+
+### Dependency graph
+
+```
+tn-common  ◀── every other crate
+tn-domain  ◀── infra, auth-service, notes-service, collab-service, ai-agent-service, gateway
+tn-infra   ◀── auth-service, notes-service, gateway
+tn-auth-service   ◀── gateway
+tn-notes-service  ◀── gateway
+tn-collab-service ◀── gateway
+tn-ai-agent-service ◀── gateway
+```
+
+The graph is a DAG — no cycles — and every arrow points from a more concrete crate to a more abstract one. `domain` has **zero** runtime dependencies (no `tokio`, no I/O), which is what makes it unit-testable in microseconds and makes the architecture honest about where side effects live.
+
 ---
 ## 📦 Workspace layout
 ```
