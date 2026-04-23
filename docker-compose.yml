@@ -1,0 +1,45 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tokionotes
+      POSTGRES_USER: tn
+      POSTGRES_PASSWORD: tn
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tn"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  gateway:
+    build: .
+    environment:
+      JWT_SECRET: dev-secret-change-me
+      BIND: 0.0.0.0:8080
+      DATABASE_URL: postgres://tn:tn@postgres:5432/tokionotes
+      REDIS_URL: redis://redis:6379
+    ports: ["8080:8080"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  frontend:
+    build: ./frontend
+    environment:
+      NEXT_PUBLIC_GRAPHQL_HTTP: http://localhost:8080/graphql
+      NEXT_PUBLIC_GRAPHQL_WS: ws://localhost:8080/graphql
+    ports: ["3000:3000"]
+    depends_on: [gateway]
+
+volumes:
+  pgdata: {}
+

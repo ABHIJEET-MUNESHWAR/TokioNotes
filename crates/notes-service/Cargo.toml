@@ -1,0 +1,19 @@
+[package]
+name = "tn-notes-service"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tn-common = { path = "../common" }
+tn-domain = { path = "../domain" }
+tn-infra  = { path = "../infra" }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+

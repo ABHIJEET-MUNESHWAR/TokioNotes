@@ -1,0 +1,29 @@
+[package]
+name = "tn-infra"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tn-common = { path = "../common" }
+tn-domain = { path = "../domain" }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+sqlx = { workspace = true, optional = true }
+jsonwebtoken = { workspace = true }
+argon2 = { workspace = true }
+rand = { workspace = true }
+dashmap = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+default = []
+postgres = ["dep:sqlx"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+

@@ -1,0 +1,22 @@
+[package]
+name = "tn-collab-service"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tn-common = { path = "../common" }
+tn-domain = { path = "../domain" }
+tn-infra  = { path = "../infra" }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+async-trait = { workspace = true }
+dashmap = { workspace = true }
+yrs = { workspace = true }
+serde = { workspace = true }
+chrono = { workspace = true }
+tracing = { workspace = true }
+futures = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+
