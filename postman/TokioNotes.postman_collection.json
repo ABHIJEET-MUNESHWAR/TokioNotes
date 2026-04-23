@@ -1,0 +1,390 @@
+{
+  "info": {
+    "name": "TokioNotes API",
+    "description": "Postman collection for the TokioNotes GraphQL gateway.\n\n- **Base URL** is configured via the collection variable `baseUrl` (default `http://localhost:8080`).\n- The `Register` and `Login` requests automatically capture the returned JWT into the `token` variable via a test script; every other request sends it as `Authorization: Bearer {{token}}`.\n- `Create Note` and `Share Note` also capture the created `noteId` / target `userId` into collection variables for follow-up calls.\n- The `Note Ops (Subscription)` entry is a WebSocket request using the `graphql-ws` sub-protocol; start the gateway, then in Postman open the request and press *Connect*. Use the provided messages to init → subscribe.\n\nStart the gateway locally with:\n```bash\nJWT_SECRET=dev cargo run -p tn-gateway\n```",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_postman_id": "f3d6b1e2-8a71-4e1a-9ab1-tokionotes0001"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
+    { "key": "wsUrl",   "value": "ws://localhost:8080/graphql", "type": "string" },
+    { "key": "token",   "value": "", "type": "string" },
+    { "key": "tokenB",  "value": "", "type": "string" },
+    { "key": "noteId",  "value": "", "type": "string" },
+    { "key": "userId",  "value": "", "type": "string" },
+    { "key": "aliceEmail", "value": "alice@example.com", "type": "string" },
+    { "key": "bobEmail",   "value": "bob@example.com",   "type": "string" },
+    { "key": "password",   "value": "passw0rd!",         "type": "string" },
+    {
+      "key": "sampleUpdateB64",
+      "value": "AQLVn4yZBgAoAQRib2R5AAVoZWxsbwA=",
+      "type": "string",
+      "description": "A pre-generated base64 Y-CRDT v1 update that inserts 'hello' at the start of an empty doc. Valid as a first update on a fresh room; generate fresh ones from the frontend for further edits."
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Ensure every GraphQL call posts JSON.",
+          "pm.request.headers.upsert({ key: 'Content-Type', value: 'application/json' });"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+      }
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register (Alice)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('no GraphQL errors', () => pm.expect(json.errors).to.be.undefined);",
+                  "const token = json.data && json.data.register && json.data.register.token;",
+                  "pm.test('token returned', () => pm.expect(token).to.be.a('string').and.not.empty);",
+                  "pm.collectionVariables.set('token', token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation Register($email:String!,$name:String!,$password:String!){ register(email:$email,displayName:$name,password:$password){ token user{ id email displayName } } }\",\n  \"variables\": { \"email\": \"{{aliceEmail}}\", \"name\": \"Alice\", \"password\": \"{{password}}\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "Register (Bob)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "const token = json.data && json.data.register && json.data.register.token;",
+                  "if (token) pm.collectionVariables.set('tokenB', token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation Register($email:String!,$name:String!,$password:String!){ register(email:$email,displayName:$name,password:$password){ token user{ id email displayName } } }\",\n  \"variables\": { \"email\": \"{{bobEmail}}\", \"name\": \"Bob\", \"password\": \"{{password}}\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "Login (Alice)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('no GraphQL errors', () => pm.expect(json.errors).to.be.undefined);",
+                  "const token = json.data && json.data.login && json.data.login.token;",
+                  "pm.test('token returned', () => pm.expect(token).to.be.a('string').and.not.empty);",
+                  "pm.collectionVariables.set('token', token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation Login($email:String!,$password:String!){ login(email:$email,password:$password){ token user{ id email displayName } } }\",\n  \"variables\": { \"email\": \"{{aliceEmail}}\", \"password\": \"{{password}}\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"query\": \"query { me { id email displayName createdAt } }\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notes",
+      "item": [
+        {
+          "name": "Create Note",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('no GraphQL errors', () => pm.expect(json.errors).to.be.undefined);",
+                  "const id = json.data && json.data.createNote && json.data.createNote.id;",
+                  "pm.test('note id returned', () => pm.expect(id).to.be.a('string').and.not.empty);",
+                  "pm.collectionVariables.set('noteId', id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation Create($title:String!){ createNote(title:$title){ id title ownerId version snapshotB64 } }\",\n  \"variables\": { \"title\": \"My first note\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "My Notes",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query { myNotes { id title updatedAt version } }\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Note",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query Note($id:UUID!){ note(id:$id){ id title ownerId version snapshotB64 } }\",\n  \"variables\": { \"id\": \"{{noteId}}\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "Rename Note",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation Rename($id:UUID!,$title:String!){ renameNote(id:$id,title:$title){ id title version } }\",\n  \"variables\": { \"id\": \"{{noteId}}\", \"title\": \"Renamed note\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Note",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation Delete($id:UUID!){ deleteNote(id:$id) }\",\n  \"variables\": { \"id\": \"{{noteId}}\" }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sharing",
+      "item": [
+        {
+          "name": "Share Note with Bob (Editor)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "pm.test('no GraphQL errors', () => pm.expect(json.errors).to.be.undefined);",
+                  "const uid = json.data && json.data.shareNote && json.data.shareNote.userId;",
+                  "if (uid) pm.collectionVariables.set('userId', uid);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation Share($id:UUID!,$email:String!,$role:Role!){ shareNote(id:$id,email:$email,role:$role){ userId role } }\",\n  \"variables\": { \"id\": \"{{noteId}}\", \"email\": \"{{bobEmail}}\", \"role\": \"EDITOR\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "List Collaborators",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query Collabs($id:UUID!){ collaborators(id:$id){ userId role } }\",\n  \"variables\": { \"id\": \"{{noteId}}\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "Revoke Share",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation Revoke($id:UUID!,$userId:UUID!){ revokeShare(id:$id,userId:$userId) }\",\n  \"variables\": { \"id\": \"{{noteId}}\", \"userId\": \"{{userId}}\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "Bob: My Notes (uses tokenB)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{tokenB}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query { myNotes { id title ownerId } }\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Collaboration (CRDT)",
+      "item": [
+        {
+          "name": "Apply Ops (sample update)",
+          "description": "Applies the pre-generated `sampleUpdateB64` (inserts 'hello' at position 0). Call this once on a freshly created note. For subsequent edits, generate updates from the frontend using `Y.encodeStateAsUpdate(doc, stateVector)` and paste the base64 here.",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation Apply($noteId:UUID!,$u:String!){ applyOps(noteId:$noteId,updateB64:$u) }\",\n  \"variables\": { \"noteId\": \"{{noteId}}\", \"u\": \"{{sampleUpdateB64}}\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "Note Ops (Subscription, WebSocket)",
+          "description": "WebSocket request against `{{wsUrl}}` using the `graphql-transport-ws` sub-protocol. Steps once connected:\n\n1. Send the `connection_init` message (include the Bearer token in `connectionParams`).\n2. Send the `subscribe` message to start `noteOps`.\n3. Keep the connection open; when another client calls `applyOps` you will receive `next` frames carrying base64 CRDT updates.\n\nCopy-paste these JSON messages into Postman's WebSocket message pane:\n\n```json\n{\"type\":\"connection_init\",\"payload\":{\"authorization\":\"Bearer {{token}}\"}}\n```\n```json\n{\"id\":\"1\",\"type\":\"subscribe\",\"payload\":{\"query\":\"subscription Ops($id:UUID!){ noteOps(noteId:$id){ noteId updateB64 } }\",\"variables\":{\"id\":\"{{noteId}}\"}}}\n```\n\nTo unsubscribe:\n```json\n{\"id\":\"1\",\"type\":\"complete\"}\n```",
+          "protocolProfileBehavior": { "disableBodyPruning": true },
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{wsUrl}}", "host": ["{{wsUrl}}"] },
+            "header": [
+              { "key": "Sec-WebSocket-Protocol", "value": "graphql-transport-ws" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "AI",
+      "item": [
+        {
+          "name": "AI Summary",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query Sum($id:UUID!){ aiSummary(id:$id) }\",\n  \"variables\": { \"id\": \"{{noteId}}\" }\n}"
+            }
+          }
+        },
+        {
+          "name": "AI Report (agentic)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/graphql", "host": ["{{baseUrl}}"], "path": ["graphql"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query Rep($id:UUID!,$i:String!){ aiReport(id:$id,instruction:$i){ summary tags } }\",\n  \"variables\": { \"id\": \"{{noteId}}\", \"i\": \"make it concise\" }\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+

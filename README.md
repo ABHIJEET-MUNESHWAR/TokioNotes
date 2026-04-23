@@ -204,3 +204,7 @@ CRDT correctness properties (associativity / commutativity / idempotence) are in
 ---
 ## 📜 License
 MIT © TokioNotes contributors.
+
+## 🧪 Postman
+
+A ready-to-import Postman v2.1 collection covering the full GraphQL surface (with auto-captured JWT & note IDs) and a WebSocket subscription request lives under [`postman/`](./postman/). See [`postman/README.md`](./postman/README.md) for the suggested run order.
