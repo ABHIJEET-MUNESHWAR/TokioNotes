@@ -30,6 +30,12 @@ export const CREATE_NOTE = gql`
   }
 `;
 
+export const RENAME_NOTE = gql`
+  mutation RenameNote($id: UUID!, $title: String!) {
+    renameNote(id: $id, title: $title) { id title updatedAt }
+  }
+`;
+
 export const SHARE_NOTE = gql`
   mutation ShareNote($id: UUID!, $email: String!, $role: Role!) {
     shareNote(id: $id, email: $email, role: $role) { userId role }
@@ -51,4 +57,3 @@ export const NOTE_OPS = gql`
 export const AI_SUMMARY = gql`
   query AiSummary($id: UUID!) { aiSummary(id: $id) }
 `;
-

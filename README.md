@@ -3,7 +3,8 @@
 ---
 ## ✨ Features
 - **Accounts** — register / login with Argon2id-hashed passwords and JWT bearer tokens.
-- **Notes** — every authenticated user can create, rename, delete and list their own notes.
+- **Notes** — every authenticated user can create, rename, delete and list their own notes. Each note has a **Title** (server-side `Note.title`, edited via `renameNote`) and a **Body** (live Y-CRDT text co-edited via `applyOps` / `noteOps`).
+- **Dark / Light theme** — the Next.js UI ships a persisted theme switch (🌙 / ☀️) wired through CSS variables; initial theme honours `prefers-color-scheme` and is restored from `localStorage` on next visit (no flash of the wrong theme thanks to a pre-hydration boot script in `app/layout.tsx`).
 - **Sharing** — owners can grant `Viewer / Editor / Owner` roles to other users by email; an event-driven saga propagates the change.
 - **Real-time collaboration** — shared notes are co-edited simultaneously through a **Y-CRDT** (`yrs`) document held in a Tokio-mutex-guarded "room"; updates fan out to every subscriber over a GraphQL subscription.
 - **Generative + Agentic AI** — `summarize`, `autocomplete`, `tag` and `suggest_edits` are exposed via the `AiAssistant` trait (deterministic heuristic shipped; OpenAI/local-LLM adapters pluggable). The agent runs all three in parallel via `tokio::join!`.
