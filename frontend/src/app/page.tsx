@@ -1,6 +1,6 @@
 "use client";
 import { useMutation, useQuery } from "@apollo/client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CREATE_NOTE, LOGIN, MY_NOTES, REGISTER } from "@/lib/queries";
 
 function AuthBox({ onAuth }: { onAuth: () => void }) {
@@ -139,8 +139,22 @@ function NotesList() {
 }
 
 export default function Home() {
-  const [authed, setAuthed] = useState(
-    typeof window !== "undefined" && !!localStorage.getItem("tn_token")
-  );
+  // Start with a deterministic value so server- and client-rendered HTML match,
+  // then read the persisted token after mount to avoid a hydration mismatch.
+  const [hydrated, setHydrated] = useState(false);
+  const [authed, setAuthed] = useState(false);
+
+  useEffect(() => {
+    setAuthed(!!localStorage.getItem("tn_token"));
+    setHydrated(true);
+  }, []);
+
+  if (!hydrated) {
+    return (
+      <div className="tn-container">
+        <p className="tn-muted">Loading…</p>
+      </div>
+    );
+  }
   return authed ? <NotesList /> : <AuthBox onAuth={() => setAuthed(true)} />;
 }
