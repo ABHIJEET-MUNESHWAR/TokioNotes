@@ -197,24 +197,24 @@ Test highlights:
 ```graphql
 type Query {
   me: UserDto!
-  note(id: UUID!): NoteDto!
+  note(id: NoteId!): NoteDto!
   myNotes: [NoteDto!]!
-  collaborators(id: UUID!): [CollaboratorDto!]!
-  aiSummary(id: UUID!): String!
-  aiReport(id: UUID!, instruction: String!): AgentReportDto!
+  collaborators(id: NoteId!): [CollaboratorDto!]!
+  aiSummary(id: NoteId!): String!
+  aiReport(id: NoteId!, instruction: String!): AgentReportDto!
 }
 type Mutation {
   register(email: String!, displayName: String!, password: String!): AuthPayload!
   login(email: String!, password: String!): AuthPayload!
   createNote(title: String!): NoteDto!
-  renameNote(id: UUID!, title: String!): NoteDto!
-  deleteNote(id: UUID!): Boolean!
-  shareNote(id: UUID!, email: String!, role: Role!): CollaboratorDto!
-  revokeShare(id: UUID!, userId: UUID!): Boolean!
-  applyOps(noteId: UUID!, updateB64: String!): String!
+  renameNote(id: NoteId!, title: String!): NoteDto!
+  deleteNote(id: NoteId!): Boolean!
+  shareNote(id: NoteId!, email: String!, role: Role!): CollaboratorDto!
+  revokeShare(id: NoteId!, userId: UserId!): Boolean!
+  applyOps(noteId: NoteId!, updateB64: String!): String!
 }
 type Subscription {
-  noteOps(noteId: UUID!): OpEvent!
+  noteOps(noteId: NoteId!): OpEvent!
 }
 ```
 Authorisation: `Authorization: Bearer <jwt>` HTTP header (or WS `connectionParams.authorization`).

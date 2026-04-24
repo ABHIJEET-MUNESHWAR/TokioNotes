@@ -16,9 +16,28 @@ function b64decode(s: string): Uint8Array {
   return out;
 }
 
+/** Minimal common-prefix / common-suffix diff for plain text. */
+function diffEdit(prev: string, next: string): { index: number; remove: number; insert: string } {
+  let start = 0;
+  const minLen = Math.min(prev.length, next.length);
+  while (start < minLen && prev.charCodeAt(start) === next.charCodeAt(start)) start++;
+  let endPrev = prev.length;
+  let endNext = next.length;
+  while (
+    endPrev > start &&
+    endNext > start &&
+    prev.charCodeAt(endPrev - 1) === next.charCodeAt(endNext - 1)
+  ) {
+    endPrev--;
+    endNext--;
+  }
+  return { index: start, remove: endPrev - start, insert: next.slice(start, endNext) };
+}
+
 export default function NotePage({ params }: { params: { id: string } }) {
   const noteId = params.id;
   const docRef = useRef<Y.Doc>();
+  const seededRef = useRef(false);
   const [body, setBody] = useState("");
   const [title, setTitle] = useState("");
   const [savedTitle, setSavedTitle] = useState("");
@@ -26,31 +45,44 @@ export default function NotePage({ params }: { params: { id: string } }) {
 
   const [applyOps] = useMutation(APPLY_OPS);
   const [renameNote] = useMutation(RENAME_NOTE);
-  const { data: notesData } = useQuery(MY_NOTES);
+  const { data: notesData } = useQuery(MY_NOTES, { fetchPolicy: "cache-and-network" });
 
   if (!docRef.current) docRef.current = new Y.Doc();
   const doc = docRef.current;
 
-  // Pick this note's title out of the cached list.
+  // 1. Seed the local Y.Doc from the server snapshot exactly once.
+  // 2. Track the title for the renameNote mutation.
   useEffect(() => {
     const n = (notesData?.myNotes ?? []).find((x: any) => x.id === noteId);
-    if (n) {
-      setTitle(n.title);
-      setSavedTitle(n.title);
+    if (!n) return;
+    setTitle(n.title);
+    setSavedTitle(n.title);
+    if (!seededRef.current && n.snapshotB64) {
+      try {
+        Y.applyUpdate(doc, b64decode(n.snapshotB64));
+        setBody(doc.getText("body").toString());
+      } catch (e) {
+        console.warn("failed to apply snapshot", e);
+      }
+      seededRef.current = true;
+    } else if (!seededRef.current) {
+      // No snapshot but we've still observed the note → treat as seeded.
+      seededRef.current = true;
     }
-  }, [notesData, noteId]);
+  }, [notesData, noteId, doc]);
 
+  // Live updates from collaborators (and echoes of our own writes).
   useSubscription(NOTE_OPS, {
     variables: { noteId },
     onData: ({ data }) => {
       const upd = data.data?.noteOps?.updateB64;
-      if (upd) {
-        Y.applyUpdate(doc, b64decode(upd));
-        setBody(doc.getText("body").toString());
-      }
+      if (!upd) return;
+      Y.applyUpdate(doc, b64decode(upd));
+      setBody(doc.getText("body").toString());
     },
   });
 
+  // Mirror Yjs body changes (from any source) into local React state.
   useEffect(() => {
     const ytext = doc.getText("body");
     const obs = () => setBody(ytext.toString());
@@ -61,17 +93,26 @@ export default function NotePage({ params }: { params: { id: string } }) {
   const onBodyChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const next = e.target.value;
     const ytext = doc.getText("body");
+    const prev = ytext.toString();
+    if (prev === next) return;
+
+    // Compute a minimal CRDT edit instead of replacing the whole text —
+    // this preserves intent and merges cleanly with concurrent edits.
+    const { index, remove, insert } = diffEdit(prev, next);
     const before = Y.encodeStateVector(doc);
     doc.transact(() => {
-      ytext.delete(0, ytext.length);
-      ytext.insert(0, next);
-    });
+      if (remove > 0) ytext.delete(index, remove);
+      if (insert.length > 0) ytext.insert(index, insert);
+    }, "local");
     const upd = Y.encodeStateAsUpdate(doc, before);
+    if (upd.length === 0) return;
+
     setStatus("saving");
     try {
       await applyOps({ variables: { noteId, updateB64: b64encode(upd) } });
       setStatus("saved");
-    } catch {
+    } catch (err) {
+      console.error("applyOps failed", err);
       setStatus("error");
     }
   };

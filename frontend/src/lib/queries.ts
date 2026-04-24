@@ -31,29 +31,29 @@ export const CREATE_NOTE = gql`
 `;
 
 export const RENAME_NOTE = gql`
-  mutation RenameNote($id: UUID!, $title: String!) {
+  mutation RenameNote($id: NoteId!, $title: String!) {
     renameNote(id: $id, title: $title) { id title updatedAt }
   }
 `;
 
 export const SHARE_NOTE = gql`
-  mutation ShareNote($id: UUID!, $email: String!, $role: Role!) {
+  mutation ShareNote($id: NoteId!, $email: String!, $role: Role!) {
     shareNote(id: $id, email: $email, role: $role) { userId role }
   }
 `;
 
 export const APPLY_OPS = gql`
-  mutation ApplyOps($noteId: UUID!, $updateB64: String!) {
+  mutation ApplyOps($noteId: NoteId!, $updateB64: String!) {
     applyOps(noteId: $noteId, updateB64: $updateB64)
   }
 `;
 
 export const NOTE_OPS = gql`
-  subscription NoteOps($noteId: UUID!) {
+  subscription NoteOps($noteId: NoteId!) {
     noteOps(noteId: $noteId) { noteId updateB64 }
   }
 `;
 
 export const AI_SUMMARY = gql`
-  query AiSummary($id: UUID!) { aiSummary(id: $id) }
+  query AiSummary($id: NoteId!) { aiSummary(id: $id) }
 `;

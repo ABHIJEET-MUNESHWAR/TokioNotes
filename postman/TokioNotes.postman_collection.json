@@ -201,7 +201,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"query Note($id:UUID!){ note(id:$id){ id title ownerId version snapshotB64 } }\",\n  \"variables\": { \"id\": \"{{noteId}}\" }\n}"
+              "raw": "{\n  \"query\": \"query Note($id:NoteId!){ note(id:$id){ id title ownerId version snapshotB64 } }\",\n  \"variables\": { \"id\": \"{{noteId}}\" }\n}"
             }
           }
         },
@@ -216,7 +216,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"mutation Rename($id:UUID!,$title:String!){ renameNote(id:$id,title:$title){ id title version } }\",\n  \"variables\": { \"id\": \"{{noteId}}\", \"title\": \"Renamed note\" }\n}"
+              "raw": "{\n  \"query\": \"mutation Rename($id:NoteId!,$title:String!){ renameNote(id:$id,title:$title){ id title version } }\",\n  \"variables\": { \"id\": \"{{noteId}}\", \"title\": \"Renamed note\" }\n}"
             }
           }
         },
@@ -231,7 +231,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"mutation Delete($id:UUID!){ deleteNote(id:$id) }\",\n  \"variables\": { \"id\": \"{{noteId}}\" }\n}"
+              "raw": "{\n  \"query\": \"mutation Delete($id:NoteId!){ deleteNote(id:$id) }\",\n  \"variables\": { \"id\": \"{{noteId}}\" }\n}"
             }
           }
         }
@@ -265,7 +265,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"mutation Share($id:UUID!,$email:String!,$role:Role!){ shareNote(id:$id,email:$email,role:$role){ userId role } }\",\n  \"variables\": { \"id\": \"{{noteId}}\", \"email\": \"{{bobEmail}}\", \"role\": \"EDITOR\" }\n}"
+              "raw": "{\n  \"query\": \"mutation Share($id:NoteId!,$email:String!,$role:Role!){ shareNote(id:$id,email:$email,role:$role){ userId role } }\",\n  \"variables\": { \"id\": \"{{noteId}}\", \"email\": \"{{bobEmail}}\", \"role\": \"EDITOR\" }\n}"
             }
           }
         },
@@ -280,7 +280,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"query Collabs($id:UUID!){ collaborators(id:$id){ userId role } }\",\n  \"variables\": { \"id\": \"{{noteId}}\" }\n}"
+              "raw": "{\n  \"query\": \"query Collabs($id:NoteId!){ collaborators(id:$id){ userId role } }\",\n  \"variables\": { \"id\": \"{{noteId}}\" }\n}"
             }
           }
         },
@@ -295,7 +295,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"mutation Revoke($id:UUID!,$userId:UUID!){ revokeShare(id:$id,userId:$userId) }\",\n  \"variables\": { \"id\": \"{{noteId}}\", \"userId\": \"{{userId}}\" }\n}"
+              "raw": "{\n  \"query\": \"mutation Revoke($id:NoteId!,$userId:UserId!){ revokeShare(id:$id,userId:$userId) }\",\n  \"variables\": { \"id\": \"{{noteId}}\", \"userId\": \"{{userId}}\" }\n}"
             }
           }
         },
@@ -331,13 +331,13 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"mutation Apply($noteId:UUID!,$u:String!){ applyOps(noteId:$noteId,updateB64:$u) }\",\n  \"variables\": { \"noteId\": \"{{noteId}}\", \"u\": \"{{sampleUpdateB64}}\" }\n}"
+              "raw": "{\n  \"query\": \"mutation Apply($noteId:NoteId!,$u:String!){ applyOps(noteId:$noteId,updateB64:$u) }\",\n  \"variables\": { \"noteId\": \"{{noteId}}\", \"u\": \"{{sampleUpdateB64}}\" }\n}"
             }
           }
         },
         {
           "name": "Note Ops (Subscription, WebSocket)",
-          "description": "WebSocket request against `{{wsUrl}}` using the `graphql-transport-ws` sub-protocol. Steps once connected:\n\n1. Send the `connection_init` message (include the Bearer token in `connectionParams`).\n2. Send the `subscribe` message to start `noteOps`.\n3. Keep the connection open; when another client calls `applyOps` you will receive `next` frames carrying base64 CRDT updates.\n\nCopy-paste these JSON messages into Postman's WebSocket message pane:\n\n```json\n{\"type\":\"connection_init\",\"payload\":{\"authorization\":\"Bearer {{token}}\"}}\n```\n```json\n{\"id\":\"1\",\"type\":\"subscribe\",\"payload\":{\"query\":\"subscription Ops($id:UUID!){ noteOps(noteId:$id){ noteId updateB64 } }\",\"variables\":{\"id\":\"{{noteId}}\"}}}\n```\n\nTo unsubscribe:\n```json\n{\"id\":\"1\",\"type\":\"complete\"}\n```",
+          "description": "WebSocket request against `{{wsUrl}}` using the `graphql-transport-ws` sub-protocol. Steps once connected:\n\n1. Send the `connection_init` message (include the Bearer token in `connectionParams`).\n2. Send the `subscribe` message to start `noteOps`.\n3. Keep the connection open; when another client calls `applyOps` you will receive `next` frames carrying base64 CRDT updates.\n\nCopy-paste these JSON messages into Postman's WebSocket message pane:\n\n```json\n{\"type\":\"connection_init\",\"payload\":{\"authorization\":\"Bearer {{token}}\"}}\n```\n```json\n{\"id\":\"1\",\"type\":\"subscribe\",\"payload\":{\"query\":\"subscription Ops($id:NoteId!){ noteOps(noteId:$id){ noteId updateB64 } }\",\"variables\":{\"id\":\"{{noteId}}\"}}}\n```\n\nTo unsubscribe:\n```json\n{\"id\":\"1\",\"type\":\"complete\"}\n```",
           "protocolProfileBehavior": { "disableBodyPruning": true },
           "request": {
             "method": "GET",
@@ -364,7 +364,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"query Sum($id:UUID!){ aiSummary(id:$id) }\",\n  \"variables\": { \"id\": \"{{noteId}}\" }\n}"
+              "raw": "{\n  \"query\": \"query Sum($id:NoteId!){ aiSummary(id:$id) }\",\n  \"variables\": { \"id\": \"{{noteId}}\" }\n}"
             }
           }
         },
@@ -379,7 +379,7 @@
             ],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"query\": \"query Rep($id:UUID!,$i:String!){ aiReport(id:$id,instruction:$i){ summary tags } }\",\n  \"variables\": { \"id\": \"{{noteId}}\", \"i\": \"make it concise\" }\n}"
+              "raw": "{\n  \"query\": \"query Rep($id:NoteId!,$i:String!){ aiReport(id:$id,instruction:$i){ summary tags } }\",\n  \"variables\": { \"id\": \"{{noteId}}\", \"i\": \"make it concise\" }\n}"
             }
           }
         }
