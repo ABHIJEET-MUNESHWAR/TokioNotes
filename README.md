@@ -165,18 +165,18 @@ cargo test --workspace
 # 2. Run the all-in-one gateway (in-memory repos)
 JWT_SECRET=dev cargo run -p tn-gateway
 # 3. Open the GraphQL Playground
-open http://localhost:8080/
+open http://localhost:9090/
 # 4. Run the frontend
 cd frontend && npm install && npm run dev
-# → http://localhost:3000
+# → http://localhost:9000
 ```
 ### Docker Compose (with Postgres + Redis)
 ```bash
 docker compose up --build
 ```
 Services exposed:
-- Gateway GraphQL → http://localhost:8080/graphql (HTTP + WebSocket)
-- Frontend → http://localhost:3000
+- Gateway GraphQL → http://localhost:9090/graphql (HTTP + WebSocket)
+- Frontend → http://localhost:9000
 - Postgres → :5432, Redis → :6379
 ---
 ## 🧪 Testing
@@ -488,7 +488,7 @@ Both Alice's and Bob's `Y.Doc`s converge on `"HiYo"` (or `"YoHi"`, depending on 
 | Env var       | Default                         | Purpose                          |
 |---------------|---------------------------------|----------------------------------|
 | `JWT_SECRET`  | `dev-secret-change-me`          | HMAC secret for signing tokens   |
-| `BIND`        | `0.0.0.0:8080`                  | HTTP bind address                |
+| `BIND`        | `0.0.0.0:9090`                  | HTTP bind address                |
 | `RUST_LOG`    | `info,sqlx=warn,hyper=warn`     | Tracing filter                   |
 | `DATABASE_URL`| —                               | (postgres feature) connection    |
 | `REDIS_URL`   | —                               | (redis adapter) event bus URL    |

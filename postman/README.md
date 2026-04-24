@@ -3,8 +3,8 @@
 Import `TokioNotes.postman_collection.json` into Postman
 (*Import → File*). The collection ships with:
 
-- Collection variables — `baseUrl` (default `http://localhost:8080`),
-  `wsUrl` (`ws://localhost:8080/graphql`), `token`, `tokenB`, `noteId`,
+- Collection variables — `baseUrl` (default `http://localhost:9090`),
+  `wsUrl` (`ws://localhost:9090/graphql`), `token`, `tokenB`, `noteId`,
   `userId`, plus pre-seeded credentials for Alice & Bob and a
   `sampleUpdateB64` Y-CRDT update.
 - **Auto-captured auth** — `Auth → Register (Alice)` and

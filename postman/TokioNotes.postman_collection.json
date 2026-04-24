@@ -1,13 +1,13 @@
 {
   "info": {
     "name": "TokioNotes API",
-    "description": "Postman collection for the TokioNotes GraphQL gateway.\n\n- **Base URL** is configured via the collection variable `baseUrl` (default `http://localhost:8080`).\n- The `Register` and `Login` requests automatically capture the returned JWT into the `token` variable via a test script; every other request sends it as `Authorization: Bearer {{token}}`.\n- `Create Note` and `Share Note` also capture the created `noteId` / target `userId` into collection variables for follow-up calls.\n- The `Note Ops (Subscription)` entry is a WebSocket request using the `graphql-ws` sub-protocol; start the gateway, then in Postman open the request and press *Connect*. Use the provided messages to init → subscribe.\n\nStart the gateway locally with:\n```bash\nJWT_SECRET=dev cargo run -p tn-gateway\n```",
+    "description": "Postman collection for the TokioNotes GraphQL gateway.\n\n- **Base URL** is configured via the collection variable `baseUrl` (default `http://localhost:9090`).\n- The `Register` and `Login` requests automatically capture the returned JWT into the `token` variable via a test script; every other request sends it as `Authorization: Bearer {{token}}`.\n- `Create Note` and `Share Note` also capture the created `noteId` / target `userId` into collection variables for follow-up calls.\n- The `Note Ops (Subscription)` entry is a WebSocket request using the `graphql-ws` sub-protocol; start the gateway, then in Postman open the request and press *Connect*. Use the provided messages to init → subscribe.\n\nStart the gateway locally with:\n```bash\nJWT_SECRET=dev cargo run -p tn-gateway\n```",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_postman_id": "f3d6b1e2-8a71-4e1a-9ab1-tokionotes0001"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8080", "type": "string" },
-    { "key": "wsUrl",   "value": "ws://localhost:8080/graphql", "type": "string" },
+    { "key": "baseUrl", "value": "http://localhost:9090", "type": "string" },
+    { "key": "wsUrl",   "value": "ws://localhost:9090/graphql", "type": "string" },
     { "key": "token",   "value": "", "type": "string" },
     { "key": "tokenB",  "value": "", "type": "string" },
     { "key": "noteId",  "value": "", "type": "string" },

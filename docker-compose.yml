@@ -22,10 +22,10 @@ services:
     build: .
     environment:
       JWT_SECRET: dev-secret-change-me
-      BIND: 0.0.0.0:8080
+      BIND: 0.0.0.0:9090
       DATABASE_URL: postgres://tn:tn@postgres:5432/tokionotes
       REDIS_URL: redis://redis:6379
-    ports: ["8080:8080"]
+    ports: ["9090:9090"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -35,9 +35,9 @@ services:
   frontend:
     build: ./frontend
     environment:
-      NEXT_PUBLIC_GRAPHQL_HTTP: http://localhost:8080/graphql
-      NEXT_PUBLIC_GRAPHQL_WS: ws://localhost:8080/graphql
-    ports: ["3000:3000"]
+      NEXT_PUBLIC_GRAPHQL_HTTP: http://localhost:9090/graphql
+      NEXT_PUBLIC_GRAPHQL_WS: ws://localhost:9090/graphql
+    ports: ["9000:9000"]
     depends_on: [gateway]
 
 volumes:

@@ -42,7 +42,7 @@ async fn health() -> &'static str { "ok" }
 async fn main() -> std::io::Result<()> {
     tn_common::telemetry::init("tn-gateway");
     let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "dev-secret-change-me".into());
-    let bind = std::env::var("BIND").unwrap_or_else(|_| "0.0.0.0:8080".into());
+    let bind = std::env::var("BIND").unwrap_or_else(|_| "0.0.0.0:9090".into());
     let state = AppState::bootstrap(&secret);
     let schema = build_schema(state);
 

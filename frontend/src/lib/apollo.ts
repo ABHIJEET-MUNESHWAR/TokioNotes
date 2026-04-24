@@ -3,8 +3,8 @@ import { GraphQLWsLink } from "@apollo/client/link/subscriptions";
 import { getMainDefinition } from "@apollo/client/utilities";
 import { createClient } from "graphql-ws";
 
-const HTTP_URL = process.env.NEXT_PUBLIC_GRAPHQL_HTTP ?? "http://localhost:8080/graphql";
-const WS_URL = process.env.NEXT_PUBLIC_GRAPHQL_WS ?? "ws://localhost:8080/graphql";
+const HTTP_URL = process.env.NEXT_PUBLIC_GRAPHQL_HTTP ?? "http://localhost:9090/graphql";
+const WS_URL = process.env.NEXT_PUBLIC_GRAPHQL_WS ?? "ws://localhost:9090/graphql";
 
 function authLink(): ApolloLink {
   return new ApolloLink((operation, forward) => {

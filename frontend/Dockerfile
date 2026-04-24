@@ -13,6 +13,6 @@ FROM node:20-alpine
 WORKDIR /app
 COPY --from=builder /app ./
 ENV NODE_ENV=production
-EXPOSE 3000
+EXPOSE 9000
 CMD ["npm","run","start"]
 
