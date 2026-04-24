@@ -7,7 +7,7 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use chrono::{DateTime, Utc};
 use tn_common::ids::{NoteId, UserId};
 use tn_domain::note::Role;
-use tn_infra::repos::UserRepo;
+use tn_infra::repos::{AclRepo, UserRepo};
 
 use crate::app::AppState;
 
@@ -35,6 +35,8 @@ pub struct NoteDto {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub version: i64,
+    /// Caller's effective role on this note (Owner / Editor / Viewer).
+    pub my_role: Role,
     /// Base64-encoded Y-CRDT state (latest snapshot).
     pub snapshot_b64: String,
 }
@@ -92,7 +94,7 @@ impl QueryRoot {
         let uid = current_user(ctx)?;
         let st = ctx.data::<AppState>()?;
         let n = st.notes.note(uid, id).await.map_err(to_gql)?;
-        Ok(st.note_dto(n).await)
+        Ok(st.note_dto(n, uid).await)
     }
 
     async fn my_notes(&self, ctx: &Context<'_>) -> Result<Vec<NoteDto>> {
@@ -100,7 +102,7 @@ impl QueryRoot {
         let st = ctx.data::<AppState>()?;
         let notes = st.notes.list_for(uid).await.map_err(to_gql)?;
         let mut out = Vec::with_capacity(notes.len());
-        for n in notes { out.push(st.note_dto(n).await); }
+        for n in notes { out.push(st.note_dto(n, uid).await); }
         Ok(out)
     }
 
@@ -172,14 +174,14 @@ impl MutationRoot {
         let st = ctx.data::<AppState>()?;
         let n = st.notes.create(uid, title).await.map_err(to_gql)?;
         let _ = st.rooms.get_or_create(n.id);
-        Ok(st.note_dto(n).await)
+        Ok(st.note_dto(n, uid).await)
     }
 
     async fn rename_note(&self, ctx: &Context<'_>, id: NoteId, title: String) -> Result<NoteDto> {
         let uid = current_user(ctx)?;
         let st = ctx.data::<AppState>()?;
         let n = st.notes.rename(uid, id, title).await.map_err(to_gql)?;
-        Ok(st.note_dto(n).await)
+        Ok(st.note_dto(n, uid).await)
     }
 
     async fn delete_note(&self, ctx: &Context<'_>, id: NoteId) -> Result<bool> {
@@ -205,12 +207,13 @@ impl MutationRoot {
     }
 
     /// Apply a base64-encoded Y-CRDT update to a note. Returns the new
-    /// snapshot (base64). Permission-checked via the notes service.
+    /// snapshot (base64). Requires at least `Editor` role; viewers are
+    /// rejected with `Forbidden`.
     async fn apply_ops(&self, ctx: &Context<'_>, note_id: NoteId, update_b64: String) -> Result<String> {
         let uid = current_user(ctx)?;
         let st = ctx.data::<AppState>()?;
-        // Permission gate.
-        let _ = st.notes.note(uid, note_id).await.map_err(to_gql)?;
+        // Permission gate — must be editor or owner.
+        let _ = st.notes.note_for_edit(uid, note_id).await.map_err(to_gql)?;
         let bytes = B64.decode(update_b64.as_bytes()).map_err(|e| Error::new(e.to_string()))?;
         let room = st.rooms.get_or_create(note_id);
         room.apply(&bytes).await.map_err(to_gql)?;
@@ -241,14 +244,26 @@ impl SubscriptionRoot {
 // ---------- Helpers ---------------------------------------------------------
 
 impl AppState {
-    pub async fn note_dto(&self, n: tn_domain::note::Note) -> NoteDto {
+    pub async fn note_dto(&self, n: tn_domain::note::Note, actor: UserId) -> NoteDto {
         let snap = match self.rooms.get(n.id) {
             Some(r) => r.snapshot().await,
             None => Vec::new(),
         };
+        let my_role = if n.owner_id == actor {
+            Role::Owner
+        } else {
+            self.notes
+                .acls
+                .role_of(n.id, actor)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or(Role::Viewer)
+        };
         NoteDto {
             id: n.id, owner_id: n.owner_id, title: n.title,
             created_at: n.created_at, updated_at: n.updated_at, version: n.version,
+            my_role,
             snapshot_b64: B64.encode(snap),
         }
     }

@@ -49,7 +49,10 @@ export default function NotePage({ params }: { params: { id: string } }) {
   const [body, setBody] = useState("");
   const [title, setTitle] = useState("");
   const [savedTitle, setSavedTitle] = useState("");
+  const [myRole, setMyRole] = useState<"VIEWER" | "EDITOR" | "OWNER" | null>(null);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+
+  const canEdit = myRole === "EDITOR" || myRole === "OWNER";
 
   const [applyOps] = useMutation(APPLY_OPS);
   const [renameNote] = useMutation(RENAME_NOTE);
@@ -65,6 +68,7 @@ export default function NotePage({ params }: { params: { id: string } }) {
     if (!n) return;
     setTitle(n.title);
     setSavedTitle(n.title);
+    if (n.myRole) setMyRole(n.myRole);
     if (!seededRef.current && n.snapshotB64) {
       try {
         Y.applyUpdate(doc, b64decode(n.snapshotB64));
@@ -99,6 +103,7 @@ export default function NotePage({ params }: { params: { id: string } }) {
   }, [doc]);
 
   const onBodyChange = async (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    if (!canEdit) return;
     const next = e.target.value;
     const ytext = doc.getText("body");
     const prev = ytext.toString();
@@ -126,6 +131,7 @@ export default function NotePage({ params }: { params: { id: string } }) {
   };
 
   const commitTitle = async () => {
+    if (!canEdit) return;
     const next = title.trim();
     if (!next || next === savedTitle) return;
     setStatus("saving");
@@ -144,6 +150,12 @@ export default function NotePage({ params }: { params: { id: string } }) {
         <div className="tn-row" style={{ justifyContent: "space-between" }}>
           <a href="/" className="tn-muted">← Back to notes</a>
           <span className="tn-muted">
+            {myRole && (
+              <span style={{ marginRight: 12 }}>
+                Role: <strong>{myRole}</strong>
+                {!canEdit && " (read-only)"}
+              </span>
+            )}
             {status === "saving" && "Saving…"}
             {status === "saved" && "Saved ✓"}
             {status === "error" && "Save failed"}
@@ -159,6 +171,7 @@ export default function NotePage({ params }: { params: { id: string } }) {
             onBlur={commitTitle}
             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
             placeholder="Untitled note"
+            readOnly={!canEdit}
           />
         </div>
 
@@ -168,7 +181,10 @@ export default function NotePage({ params }: { params: { id: string } }) {
             className="tn-textarea"
             value={body}
             onChange={onBodyChange}
-            placeholder="Start writing — changes sync live to every collaborator…"
+            placeholder={canEdit
+              ? "Start writing — changes sync live to every collaborator…"
+              : "You have view-only access to this note."}
+            readOnly={!canEdit}
           />
         </div>
 

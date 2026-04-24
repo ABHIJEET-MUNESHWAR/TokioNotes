@@ -26,19 +26,19 @@ export const ME = gql`
 
 export const MY_NOTES = gql`
   query MyNotes {
-    myNotes { id title updatedAt snapshotB64 }
+    myNotes { id title updatedAt myRole snapshotB64 }
   }
 `;
 
 export const CREATE_NOTE = gql`
   mutation CreateNote($title: String!) {
-    createNote(title: $title) { id title snapshotB64 }
+    createNote(title: $title) { id title myRole snapshotB64 }
   }
 `;
 
 export const RENAME_NOTE = gql`
   mutation RenameNote($id: NoteId!, $title: String!) {
-    renameNote(id: $id, title: $title) { id title updatedAt }
+    renameNote(id: $id, title: $title) { id title updatedAt myRole }
   }
 `;
 

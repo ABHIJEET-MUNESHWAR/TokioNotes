@@ -174,6 +174,16 @@ where
         Ok(n)
     }
 
+    /// Permission gate for live CRDT writes (`applyOps`). Requires the
+    /// caller to have at least `Editor` access; viewers are rejected.
+    pub async fn note_for_edit(&self, actor: UserId, note: NoteId) -> AppResult<Note> {
+        let (n, role) = self.require_role(note, actor).await?;
+        if !role.can_edit() {
+            return Err(AppError::Forbidden("viewer cannot edit".into()));
+        }
+        Ok(n)
+    }
+
     pub async fn list_for(&self, user: UserId) -> AppResult<Vec<Note>> {
         let mut owned = self.notes.for_user(user).await?;
         let shared = self.acls.notes_for_user(user).await?;
@@ -233,6 +243,21 @@ mod tests {
         let n = svc.create(alice, "T".into()).await.unwrap();
         svc.share(alice, n.id, "b@x", Role::Viewer).await.unwrap();
         assert!(svc.rename(bob, n.id, "x".into()).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn viewer_cannot_apply_ops() {
+        let (svc, alice, bob) = fixture().await;
+        let n = svc.create(alice, "T".into()).await.unwrap();
+        svc.share(alice, n.id, "b@x", Role::Viewer).await.unwrap();
+        // Viewer is allowed to *read* the note…
+        assert!(svc.note(bob, n.id).await.is_ok());
+        // …but rejected by the live-edit gate.
+        assert!(svc.note_for_edit(bob, n.id).await.is_err());
+        // Editors and owners pass.
+        svc.share(alice, n.id, "b@x", Role::Editor).await.unwrap();
+        assert!(svc.note_for_edit(bob, n.id).await.is_ok());
+        assert!(svc.note_for_edit(alice, n.id).await.is_ok());
     }
 
     #[tokio::test]
