@@ -40,8 +40,14 @@ async fn graphql_ws(
     GraphQLSubscription::new(schema.get_ref().clone())
         .on_connection_init(|value| async move {
             let mut data = Data::default();
-            if let Some(tok) = token_from_init(&value) {
-                data.insert(AuthToken(tok));
+            match token_from_init(&value) {
+                Some(tok) => {
+                    tracing::debug!("ws connection_init received token");
+                    data.insert(AuthToken(tok));
+                }
+                None => {
+                    tracing::warn!("ws connection_init had no authorization payload");
+                }
             }
             Ok(data)
         })
@@ -74,12 +80,18 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(schema.clone()))
             .route("/health", web::get().to(health))
             .route("/", web::get().to(playground))
-            .service(web::resource("/graphql").route(web::post().to(graphql)))
+            // Single `/graphql` resource that handles both HTTP queries
+            // (POST) and WebSocket subscription upgrades (GET + Upgrade
+            // header). Registering them as two separate `service(...)`
+            // resources leaves the GET route unreachable in Actix.
             .service(
                 web::resource("/graphql")
-                    .guard(guard::Get())
-                    .guard(guard::Header("upgrade", "websocket"))
-                    .to(graphql_ws),
+                    .route(web::post().to(graphql))
+                    .route(
+                        web::get()
+                            .guard(guard::Header("upgrade", "websocket"))
+                            .to(graphql_ws),
+                    ),
             )
     })
     .bind(bind)?

@@ -23,10 +23,16 @@ export function makeClient() {
   const ws = typeof window !== "undefined"
     ? new GraphQLWsLink(createClient({
         url: WS_URL,
+        // Re-evaluated on every (re)connect, so a fresh token after login
+        // is automatically picked up on the next reconnection.
         connectionParams: () => {
           const token = localStorage.getItem("tn_token");
           return token ? { authorization: `Bearer ${token}` } : {};
         },
+        // Try to keep the connection alive — closes will be retried with
+        // exponential backoff by graphql-ws.
+        retryAttempts: Infinity,
+        shouldRetry: () => true,
       }))
     : null;
   const link = ws

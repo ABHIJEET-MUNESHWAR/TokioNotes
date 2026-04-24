@@ -92,6 +92,11 @@ export default function NotePage({ params }: { params: { id: string } }) {
       Y.applyUpdate(doc, b64decode(upd));
       setBody(doc.getText("body").toString());
     },
+    onError: (err) => {
+      // Surface WS auth/routing problems instead of failing silently.
+      // eslint-disable-next-line no-console
+      console.error("noteOps subscription error", err);
+    },
   });
 
   // Mirror Yjs body changes (from any source) into local React state.
