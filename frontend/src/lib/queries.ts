@@ -18,6 +18,12 @@ export const LOGIN = gql`
   }
 `;
 
+export const ME = gql`
+  query Me {
+    me { id email displayName }
+  }
+`;
+
 export const MY_NOTES = gql`
   query MyNotes {
     myNotes { id title updatedAt snapshotB64 }

@@ -1,6 +1,7 @@
 import "./globals.css";
 import { Providers } from "@/lib/Providers";
 import { ThemeProvider, ThemeToggle } from "@/lib/theme";
+import { UserMenu } from "@/lib/UserMenu";
 
 export const metadata = { title: "TokioNotes" };
 
@@ -28,7 +29,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Providers>
             <header className="tn-header">
               <h1><a href="/">📝 TokioNotes</a></h1>
-              <ThemeToggle />
+              <div className="tn-header-actions">
+                <UserMenu />
+                <ThemeToggle />
+              </div>
             </header>
             <main>{children}</main>
           </Providers>

@@ -29,6 +29,7 @@ pub struct AppState {
     pub rooms: RoomManager,
     pub ai: Arc<Ai>,
     pub bus: Arc<InProcBus<DomainEvent>>,
+    pub users: Arc<InMemoryUserRepo>,
 }
 
 impl AppState {
@@ -44,11 +45,11 @@ impl AppState {
             JwtIssuer::new(jwt_secret.as_bytes().to_vec(), 60 * 60 * 24),
         ));
         let notes_svc = Arc::new(NotesService::new(
-            users, notes, acls, events, bus.clone(),
+            users.clone(), notes, acls, events, bus.clone(),
         ));
         let ai = Arc::new(AiService::new(Arc::new(HeuristicAssistant)));
 
-        Self { auth, notes: notes_svc, rooms: RoomManager::new(), ai, bus }
+        Self { auth, notes: notes_svc, rooms: RoomManager::new(), ai, bus, users }
     }
 }
 

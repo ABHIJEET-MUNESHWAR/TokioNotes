@@ -169,3 +169,54 @@ a:hover { text-decoration: underline; }
 }
 .tn-theme-toggle:hover { background: var(--border); }
 
+.tn-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.tn-user-menu {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px 4px 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+.tn-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--primary-contrast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.tn-user-meta {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  max-width: 180px;
+}
+.tn-user-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tn-user-email {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (max-width: 600px) {
+  .tn-user-meta { display: none; }
+}

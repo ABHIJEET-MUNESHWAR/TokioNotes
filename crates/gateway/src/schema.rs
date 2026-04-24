@@ -7,6 +7,7 @@ use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use chrono::{DateTime, Utc};
 use tn_common::ids::{NoteId, UserId};
 use tn_domain::note::Role;
+use tn_infra::repos::UserRepo;
 
 use crate::app::AppState;
 
@@ -252,14 +253,17 @@ impl AppState {
         }
     }
     pub async fn auth_user(&self, uid: UserId) -> Result<UserDto> {
-        // Look up via the user repo through the auth service's verify flow:
-        // for the in-memory binding we re-use the notes-service's user repo
-        // by going through the auth `register/login` cache. Simpler: expose
-        // a tiny lookup via NotesService.users… but it's private. We add
-        // a helper here by storing nothing: just synthesise from id.
+        let u = self
+            .users
+            .by_id(uid)
+            .await
+            .map_err(to_gql)?
+            .ok_or_else(|| Error::new("user not found"))?;
         Ok(UserDto {
-            id: uid, email: String::new(), display_name: String::new(),
-            created_at: chrono::Utc::now(),
+            id: u.id,
+            email: u.email,
+            display_name: u.display_name,
+            created_at: u.created_at,
         })
     }
 }
