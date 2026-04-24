@@ -44,7 +44,9 @@ export const RENAME_NOTE = gql`
 
 export const SHARE_NOTE = gql`
   mutation ShareNote($id: NoteId!, $email: String!, $role: Role!) {
-    shareNote(id: $id, email: $email, role: $role) { userId role }
+    shareNote(id: $id, email: $email, role: $role) {
+      userId role displayName email
+    }
   }
 `;
 
@@ -56,7 +58,7 @@ export const REVOKE_SHARE = gql`
 
 export const COLLABORATORS = gql`
   query Collaborators($id: NoteId!) {
-    collaborators(id: $id) { userId role }
+    collaborators(id: $id) { userId role displayName email }
   }
 `;
 

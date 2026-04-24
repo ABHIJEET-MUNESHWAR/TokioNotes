@@ -1,6 +1,7 @@
 use actix_cors::Cors;
 use actix_web::{guard, web, App, HttpRequest, HttpResponse, HttpServer};
 use async_graphql::http::{playground_source, GraphQLPlaygroundConfig};
+use async_graphql::Data;
 use async_graphql_actix_web::{GraphQLRequest, GraphQLResponse, GraphQLSubscription};
 use tn_gateway::app::AppState;
 use tn_gateway::schema::{build_schema, AppSchema, AuthToken};
@@ -20,12 +21,31 @@ async fn graphql(
     schema.execute(req).await.into()
 }
 
+/// Extract a bearer token from a `graphql-transport-ws` `connection_init`
+/// payload. The frontend sends `connectionParams: { authorization: "Bearer …" }`
+/// so we accept either the `authorization` or `Authorization` key.
+fn token_from_init(value: &serde_json::Value) -> Option<String> {
+    let raw = value
+        .get("authorization")
+        .or_else(|| value.get("Authorization"))?
+        .as_str()?;
+    Some(raw.trim_start_matches("Bearer ").trim().to_string())
+}
+
 async fn graphql_ws(
     schema: web::Data<AppSchema>,
     req: HttpRequest,
     payload: web::Payload,
 ) -> actix_web::Result<HttpResponse> {
-    GraphQLSubscription::new(schema.get_ref().clone()).start(&req, payload)
+    GraphQLSubscription::new(schema.get_ref().clone())
+        .on_connection_init(|value| async move {
+            let mut data = Data::default();
+            if let Some(tok) = token_from_init(&value) {
+                data.insert(AuthToken(tok));
+            }
+            Ok(data)
+        })
+        .start(&req, payload)
 }
 
 async fn playground() -> HttpResponse {

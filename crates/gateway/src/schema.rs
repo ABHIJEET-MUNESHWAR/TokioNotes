@@ -25,6 +25,8 @@ pub struct UserDto {
 pub struct CollaboratorDto {
     pub user_id: UserId,
     pub role: Role,
+    pub display_name: String,
+    pub email: String,
 }
 
 #[derive(SimpleObject, Clone)]
@@ -110,10 +112,11 @@ impl QueryRoot {
         let uid = current_user(ctx)?;
         let st = ctx.data::<AppState>()?;
         let acls = st.notes.collaborators(uid, id).await.map_err(to_gql)?;
-        Ok(acls
-            .into_iter()
-            .map(|a| CollaboratorDto { user_id: a.user_id, role: a.role })
-            .collect())
+        let mut out = Vec::with_capacity(acls.len());
+        for a in acls {
+            out.push(st.collaborator_dto(a).await);
+        }
+        Ok(out)
     }
 
     async fn ai_summary(&self, ctx: &Context<'_>, id: NoteId) -> Result<String> {
@@ -196,7 +199,7 @@ impl MutationRoot {
         let uid = current_user(ctx)?;
         let st = ctx.data::<AppState>()?;
         let acl = st.notes.share(uid, id, &email, role).await.map_err(to_gql)?;
-        Ok(CollaboratorDto { user_id: acl.user_id, role: acl.role })
+        Ok(st.collaborator_dto(acl).await)
     }
 
     async fn revoke_share(&self, ctx: &Context<'_>, id: NoteId, user_id: UserId) -> Result<bool> {
@@ -280,6 +283,22 @@ impl AppState {
             display_name: u.display_name,
             created_at: u.created_at,
         })
+    }
+
+    /// Build a `CollaboratorDto` enriched with the user's display name and
+    /// email. Falls back to empty strings if the user can no longer be
+    /// resolved (e.g. they were deleted but the ACL row still exists).
+    pub async fn collaborator_dto(&self, acl: tn_domain::note::NoteAcl) -> CollaboratorDto {
+        let (display_name, email) = match self.users.by_id(acl.user_id).await {
+            Ok(Some(u)) => (u.display_name, u.email),
+            _ => (String::new(), String::new()),
+        };
+        CollaboratorDto {
+            user_id: acl.user_id,
+            role: acl.role,
+            display_name,
+            email,
+        }
     }
 }
 

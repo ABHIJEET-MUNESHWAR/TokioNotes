@@ -236,8 +236,12 @@ function SharePanel({ noteId }: { noteId: string }) {
     }
   };
 
-  const collaborators: Array<{ userId: string; role: string }> =
-    data?.collaborators ?? [];
+  const collaborators: Array<{
+    userId: string;
+    role: string;
+    displayName: string;
+    email: string;
+  }> = data?.collaborators ?? [];
 
   return (
     <div className="tn-card tn-stack" style={{ marginTop: 16 }}>
@@ -285,27 +289,33 @@ function SharePanel({ noteId }: { noteId: string }) {
           <p className="tn-muted">No collaborators yet.</p>
         )}
         <ul className="tn-list">
-          {collaborators.map((c) => (
-            <li
-              key={c.userId}
-              className="tn-row"
-              style={{ justifyContent: "space-between" }}
-            >
-              <span>
-                <code>{c.userId.slice(0, 8)}…</code>{" "}
-                <span className="tn-meta">{c.role}</span>
-              </span>
-              {c.role !== "OWNER" && (
-                <button
-                  className="tn-btn"
-                  onClick={() => revoke(c.userId)}
-                  title="Revoke access"
-                >
-                  Revoke
-                </button>
-              )}
-            </li>
-          ))}
+          {collaborators.map((c) => {
+            const name = c.displayName || c.email || c.userId.slice(0, 8) + "…";
+            return (
+              <li
+                key={c.userId}
+                className="tn-row"
+                style={{ justifyContent: "space-between" }}
+              >
+                <span style={{ display: "flex", flexDirection: "column" }}>
+                  <strong>{name}</strong>
+                  {c.email && (
+                    <span className="tn-meta">{c.email}</span>
+                  )}
+                  <span className="tn-meta">{c.role}</span>
+                </span>
+                {c.role !== "OWNER" && (
+                  <button
+                    className="tn-btn"
+                    onClick={() => revoke(c.userId)}
+                    title="Revoke access"
+                  >
+                    Revoke
+                  </button>
+                )}
+              </li>
+            );
+          })}
         </ul>
       </div>
     </div>
