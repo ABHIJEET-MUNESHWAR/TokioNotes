@@ -2,7 +2,15 @@
 import { useMutation, useQuery, useSubscription } from "@apollo/client";
 import { useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
-import { APPLY_OPS, MY_NOTES, NOTE_OPS, RENAME_NOTE } from "@/lib/queries";
+import {
+  APPLY_OPS,
+  COLLABORATORS,
+  MY_NOTES,
+  NOTE_OPS,
+  RENAME_NOTE,
+  REVOKE_SHARE,
+  SHARE_NOTE,
+} from "@/lib/queries";
 
 function b64encode(bytes: Uint8Array): string {
   let s = "";
@@ -167,6 +175,122 @@ export default function NotePage({ params }: { params: { id: string } }) {
         <p className="tn-muted" style={{ margin: 0 }}>
           Note ID: <code>{noteId}</code>
         </p>
+      </div>
+
+      <SharePanel noteId={noteId} />
+    </div>
+  );
+}
+
+function SharePanel({ noteId }: { noteId: string }) {
+  const { data, loading, refetch } = useQuery(COLLABORATORS, {
+    variables: { id: noteId },
+    fetchPolicy: "cache-and-network",
+  });
+  const [shareNote] = useMutation(SHARE_NOTE);
+  const [revokeShare] = useMutation(REVOKE_SHARE);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<"VIEWER" | "EDITOR" | "OWNER">("EDITOR");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    const target = email.trim();
+    if (!target) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await shareNote({ variables: { id: noteId, email: target, role } });
+      setEmail("");
+      await refetch();
+    } catch (e: any) {
+      setError(e.message ?? "Share failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async (userId: string) => {
+    setError(null);
+    try {
+      await revokeShare({ variables: { id: noteId, userId } });
+      await refetch();
+    } catch (e: any) {
+      setError(e.message ?? "Revoke failed");
+    }
+  };
+
+  const collaborators: Array<{ userId: string; role: string }> =
+    data?.collaborators ?? [];
+
+  return (
+    <div className="tn-card tn-stack" style={{ marginTop: 16 }}>
+      <h3 style={{ margin: 0 }}>Share & collaborate</h3>
+      <p className="tn-muted" style={{ margin: 0 }}>
+        Invite another registered user by email. Editors can co-edit the body
+        live; viewers only see updates. Only owners can share or revoke access.
+      </p>
+
+      <div className="tn-row" style={{ flexWrap: "wrap", gap: 8 }}>
+        <input
+          className="tn-input"
+          style={{ flex: 1, minWidth: 220 }}
+          placeholder="collaborator@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+        />
+        <select
+          className="tn-input"
+          value={role}
+          onChange={(e) => setRole(e.target.value as any)}
+          style={{ minWidth: 140 }}
+        >
+          <option value="VIEWER">Viewer</option>
+          <option value="EDITOR">Editor</option>
+          <option value="OWNER">Owner</option>
+        </select>
+        <button
+          className="tn-btn tn-btn-primary"
+          onClick={submit}
+          disabled={busy || !email.trim()}
+        >
+          {busy ? "Sharing…" : "Share"}
+        </button>
+      </div>
+      {error && <p style={{ color: "var(--danger)", margin: 0 }}>{error}</p>}
+
+      <div>
+        <span className="tn-section-label">Collaborators</span>
+        {loading && !collaborators.length && (
+          <p className="tn-muted">Loading…</p>
+        )}
+        {!loading && collaborators.length === 0 && (
+          <p className="tn-muted">No collaborators yet.</p>
+        )}
+        <ul className="tn-list">
+          {collaborators.map((c) => (
+            <li
+              key={c.userId}
+              className="tn-row"
+              style={{ justifyContent: "space-between" }}
+            >
+              <span>
+                <code>{c.userId.slice(0, 8)}…</code>{" "}
+                <span className="tn-meta">{c.role}</span>
+              </span>
+              {c.role !== "OWNER" && (
+                <button
+                  className="tn-btn"
+                  onClick={() => revoke(c.userId)}
+                  title="Revoke access"
+                >
+                  Revoke
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );

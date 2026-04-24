@@ -17,6 +17,7 @@
 3. [📦 Workspace layout](#-workspace-layout)
 4. [🚀 Quick start (no Postgres required)](#-quick-start-no-postgres-required)
    - [Docker Compose (with Postgres + Redis)](#docker-compose-with-postgres--redis)
+   - [👥 Sharing notes & collaborating in real time](#-sharing-notes--collaborating-in-real-time)
 5. [🧪 Testing](#-testing)
 6. [📡 GraphQL surface](#-graphql-surface)
 7. [🛠 How It Works](#-how-it-works)
@@ -234,6 +235,47 @@ Services exposed:
 - Gateway GraphQL → http://localhost:9090/graphql (HTTP + WebSocket)
 - Frontend → http://localhost:9000
 - Postgres → :5432, Redis → :6379
+
+### 👥 Sharing notes & collaborating in real time
+
+End-user walk-through (UI):
+
+1. **Both users register** at <http://localhost:9000>. The owner ("Alice") and at least one collaborator ("Bob") each create an account so the gateway has their email → `UserId` mapping.
+2. **Alice opens the note** she wants to share by clicking it in *My notes*. The editor page now shows a **Share & collaborate** panel under the body.
+3. **Alice enters Bob's email**, picks a role (`Viewer`, `Editor`, or `Owner`) and clicks **Share**. This calls the `shareNote` saga; on success Bob appears in the *Collaborators* list. Owners can click **Revoke** next to any non-owner row to call `revokeShare`.
+4. **Bob signs in**. The note now appears in his *My notes* list (served by `myNotes` → `NotesService::list_for`, which merges owner-indexed notes with the ACL reverse index).
+5. **Bob opens the note**. His browser:
+   - Loads the latest server snapshot via `myNotes.snapshotB64` and seeds his local `Y.Doc` once (`Y.applyUpdate`).
+   - Subscribes to `noteOps(noteId)` over the GraphQL WebSocket — the gateway permission-checks via `NotesService::note` then attaches a `broadcast::Receiver` from the per-note `Room`.
+6. **Live co-edit.** Each keystroke is diffed against the previous text into a single `delete + insert` Yjs op, encoded as an incremental `encodeStateAsUpdate(doc, before)`, base64-encoded, and sent through `applyOps`. The server:
+   - Acquires the per-room `tokio::sync::Mutex<Doc>`, `Update::decode_v1`, `apply_update`, then drops the lock.
+   - Fans out the update on the room's `tokio::sync::broadcast::Sender` so every other subscriber (Bob) receives an `OpEvent` and merges it into their `Y.Doc` — the textarea reflects the change immediately.
+   - Returns the new full snapshot so the writer can reseed after a reconnect.
+7. **Concurrent edits converge by construction** — Yjs guarantees associativity / commutativity / idempotence, so it doesn't matter who types first or whose packet arrives first; both Alice and Bob end up with the same body. Lagged subscribers re-sync via `Room::snapshot()` automatically.
+
+Equivalent flow via the API (Postman / `curl`):
+
+```graphql
+# 1. Alice
+mutation { shareNote(id: "<note-id>", email: "bob@example.com", role: EDITOR) { userId role } }
+
+# 2. Bob (separate JWT)
+subscription { noteOps(noteId: "<note-id>") { updateB64 } }      # over WebSocket
+
+# 3. Either user
+mutation ($u: String!) { applyOps(noteId: "<note-id>", updateB64: $u) }
+```
+
+Permission rules enforced server-side:
+
+| Role     | Read body | Edit body (`applyOps`) | Rename | Share / Revoke / Delete |
+|----------|:---------:|:----------------------:|:------:|:-----------------------:|
+| Viewer   | ✅        | ❌                      | ❌     | ❌                       |
+| Editor   | ✅        | ✅                      | ✅     | ❌                       |
+| Owner    | ✅        | ✅                      | ✅     | ✅                       |
+
+See [`🛠 How It Works → 7. shareNote`](#7-sharenoteid-email-role--mutation-saga), [`11. applyOps`](#11-applyopsnoteid-updateb64--mutation-crdt-hot-path) and [`12. noteOps`](#12-noteopsnoteid--subscription-crdt-read-path) for the implementation-level traces.
+
 ---
 ## 🧪 Testing
 ```bash

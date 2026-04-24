@@ -42,6 +42,18 @@ export const SHARE_NOTE = gql`
   }
 `;
 
+export const REVOKE_SHARE = gql`
+  mutation RevokeShare($id: NoteId!, $userId: UserId!) {
+    revokeShare(id: $id, userId: $userId)
+  }
+`;
+
+export const COLLABORATORS = gql`
+  query Collaborators($id: NoteId!) {
+    collaborators(id: $id) { userId role }
+  }
+`;
+
 export const APPLY_OPS = gql`
   mutation ApplyOps($noteId: NoteId!, $updateB64: String!) {
     applyOps(noteId: $noteId, updateB64: $updateB64)
