@@ -14,14 +14,23 @@ export function UserMenu() {
   const client = useApolloClient();
 
   useEffect(() => {
-    setHasToken(!!localStorage.getItem("tn_token"));
+    const refresh = () => setHasToken(!!localStorage.getItem("tn_token"));
+    refresh();
     setHydrated(true);
-    // Re-evaluate when another tab logs in/out.
+
+    // `storage` only fires in *other* tabs; for same-tab login/logout we
+    // dispatch a custom `tn-auth-changed` event from the auth flow.
     const onStorage = (e: StorageEvent) => {
       if (e.key === "tn_token") setHasToken(!!e.newValue);
     };
+    const onAuthChanged = () => refresh();
+
     window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    window.addEventListener("tn-auth-changed", onAuthChanged);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("tn-auth-changed", onAuthChanged);
+    };
   }, []);
 
   const { data, loading } = useQuery(ME, {

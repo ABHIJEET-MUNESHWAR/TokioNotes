@@ -22,6 +22,9 @@ function AuthBox({ onAuth }: { onAuth: () => void }) {
           : await login({ variables: { email, password } });
       const token = (res.data as any)[mode].token;
       localStorage.setItem("tn_token", token);
+      // Notify same-tab listeners (UserMenu) — `storage` events don't fire
+      // in the originating tab, so this custom event is required.
+      window.dispatchEvent(new Event("tn-auth-changed"));
       onAuth();
     } catch (e: any) {
       setError(e.message ?? "Authentication failed");
