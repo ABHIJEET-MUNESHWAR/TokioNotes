@@ -454,7 +454,7 @@ mod tests {
 
         // Pre-create the room so the broadcast channel exists before the
         // subscription resolver attaches its receiver.
-        let _state_room = {
+        {
             let st_ref = schema
                 .execute(
                     Request::new(format!(r#"{{ note(id:"{}"){{ id }} }}"#, nid))
@@ -462,7 +462,7 @@ mod tests {
                 )
                 .await;
             assert!(st_ref.errors.is_empty());
-        };
+        }
 
         let sub_req = Request::new(format!(
             r#"subscription{{ noteOps(noteId:"{}") {{ noteId updateB64 }} }}"#,

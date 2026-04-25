@@ -19,7 +19,7 @@ where
     }
 }
 
-pub async fn with_retry<F, Fut, T>(max_attempts: usize, mut op: F) -> AppResult<T>
+pub async fn with_retry<F, Fut, T>(max_attempts: usize, op: F) -> AppResult<T>
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = AppResult<T>>,
@@ -29,7 +29,7 @@ where
         .max_delay(Duration::from_millis(500))
         .map(jitter)
         .take(max_attempts.saturating_sub(1));
-    Retry::spawn(strategy, move || op()).await
+    Retry::spawn(strategy, op).await
 }
 
 #[derive(Clone)]
