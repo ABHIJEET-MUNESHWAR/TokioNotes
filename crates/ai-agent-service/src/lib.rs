@@ -23,7 +23,9 @@ pub struct AgentReport {
 }
 
 impl<A: AiAssistant + 'static> AiService<A> {
-    pub fn new(assistant: Arc<A>) -> Self { Self { assistant } }
+    pub fn new(assistant: Arc<A>) -> Self {
+        Self { assistant }
+    }
 
     pub async fn summarize(&self, body: &str) -> AppResult<Summary> {
         self.assistant.summarize(body).await
@@ -42,7 +44,11 @@ impl<A: AiAssistant + 'static> AiService<A> {
             self.assistant.tag(body),
             self.assistant.suggest_edits(body, instruction),
         );
-        Ok(AgentReport { summary: s?, tags: t?, suggestions: sg? })
+        Ok(AgentReport {
+            summary: s?,
+            tags: t?,
+            suggestions: sg?,
+        })
     }
 
     /// Batch-summarise many bodies concurrently. O(n) wall-clock w.r.t.
@@ -70,7 +76,10 @@ mod tests {
     #[tokio::test]
     async fn agent_report_runs_in_parallel() {
         let s = AiService::new(Arc::new(HeuristicAssistant));
-        let r = s.agent_report("the quick brown fox jumps over the lazy dog", "shorter").await.unwrap();
+        let r = s
+            .agent_report("the quick brown fox jumps over the lazy dog", "shorter")
+            .await
+            .unwrap();
         assert!(!r.summary.text.is_empty());
         assert!(!r.suggestions.is_empty());
     }
@@ -83,4 +92,3 @@ mod tests {
         assert_eq!(out.len(), 2);
     }
 }
-

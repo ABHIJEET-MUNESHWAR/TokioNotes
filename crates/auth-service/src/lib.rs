@@ -73,7 +73,10 @@ mod tests {
     use tn_infra::repos::InMemoryUserRepo;
 
     fn svc() -> AuthService<InMemoryUserRepo> {
-        AuthService::new(Arc::new(InMemoryUserRepo::default()), JwtIssuer::new(b"k".to_vec(), 60))
+        AuthService::new(
+            Arc::new(InMemoryUserRepo::default()),
+            JwtIssuer::new(b"k".to_vec(), 60),
+        )
     }
 
     #[tokio::test]
@@ -103,4 +106,3 @@ mod tests {
         assert!(svc().login("nobody@x.com", "passw0rd!").await.is_err());
     }
 }
-

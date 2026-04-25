@@ -35,4 +35,3 @@ mod tests {
         assert!(r.shard_for(u) < 8);
     }
 }
-

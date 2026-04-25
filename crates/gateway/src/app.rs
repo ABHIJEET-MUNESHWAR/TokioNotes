@@ -6,9 +6,7 @@ use tn_common::eventbus::InProcBus;
 use tn_domain::ai::HeuristicAssistant;
 use tn_domain::events::DomainEvent;
 use tn_infra::auth::JwtIssuer;
-use tn_infra::repos::{
-    InMemoryAclRepo, InMemoryEventStore, InMemoryNoteRepo, InMemoryUserRepo,
-};
+use tn_infra::repos::{InMemoryAclRepo, InMemoryEventStore, InMemoryNoteRepo, InMemoryUserRepo};
 use tn_notes_service::NotesService;
 
 pub type Notes = NotesService<
@@ -45,11 +43,21 @@ impl AppState {
             JwtIssuer::new(jwt_secret.as_bytes().to_vec(), 60 * 60 * 24),
         ));
         let notes_svc = Arc::new(NotesService::new(
-            users.clone(), notes, acls, events, bus.clone(),
+            users.clone(),
+            notes,
+            acls,
+            events,
+            bus.clone(),
         ));
         let ai = Arc::new(AiService::new(Arc::new(HeuristicAssistant)));
 
-        Self { auth, notes: notes_svc, rooms: RoomManager::new(), ai, bus, users }
+        Self {
+            auth,
+            notes: notes_svc,
+            rooms: RoomManager::new(),
+            ai,
+            bus,
+            users,
+        }
     }
 }
-

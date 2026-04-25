@@ -44,4 +44,3 @@ mod tests {
         assert!(matches!(AppError::internal("boom"), AppError::Internal(_)));
     }
 }
-

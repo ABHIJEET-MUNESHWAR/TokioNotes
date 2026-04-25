@@ -21,7 +21,10 @@ pub struct JwtIssuer {
 
 impl JwtIssuer {
     pub fn new(secret: impl Into<Vec<u8>>, ttl_secs: i64) -> Self {
-        Self { secret: secret.into(), ttl_secs }
+        Self {
+            secret: secret.into(),
+            ttl_secs,
+        }
     }
     pub fn issue(&self, user: UserId) -> AppResult<String> {
         let now = Utc::now();
@@ -30,8 +33,12 @@ impl JwtIssuer {
             iat: now.timestamp(),
             exp: (now + Duration::seconds(self.ttl_secs)).timestamp(),
         };
-        encode(&Header::default(), &claims, &EncodingKey::from_secret(&self.secret))
-            .map_err(|e| AppError::Internal(e.to_string()))
+        encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(&self.secret),
+        )
+        .map_err(|e| AppError::Internal(e.to_string()))
     }
     pub fn verify(&self, token: &str) -> AppResult<Claims> {
         let data = decode::<Claims>(
@@ -61,4 +68,3 @@ mod tests {
         assert!(j.verify("not-a-token").is_err());
     }
 }
-

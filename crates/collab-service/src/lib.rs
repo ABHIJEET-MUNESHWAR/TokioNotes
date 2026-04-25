@@ -35,7 +35,11 @@ impl Room {
         // Touch the root text so it exists in the doc.
         let _ = doc.get_or_insert_text("body");
         let (tx, _) = broadcast::channel(1024);
-        Self { note, doc: Mutex::new(doc), tx }
+        Self {
+            note,
+            doc: Mutex::new(doc),
+            tx,
+        }
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<OpFrame> {
@@ -51,18 +55,24 @@ impl Room {
             let update = Update::decode_v1(update_bytes)
                 .map_err(|e| AppError::Validation(format!("bad update: {e}")))?;
             let mut txn = doc.transact_mut();
-            txn.apply_update(update).map_err(|e| AppError::Validation(e.to_string()))?;
+            txn.apply_update(update)
+                .map_err(|e| AppError::Validation(e.to_string()))?;
         }
         drop(doc);
         // Best-effort fanout; lag is recoverable via state-vector resync.
-        let _ = self.tx.send(OpFrame { note: self.note, update: update_bytes.to_vec() });
+        let _ = self.tx.send(OpFrame {
+            note: self.note,
+            update: update_bytes.to_vec(),
+        });
         Ok(())
     }
 
     /// Encode the full state as a single update for late joiners.
     pub async fn snapshot(&self) -> Vec<u8> {
         let doc = self.doc.lock().await;
-        let bytes = doc.transact().encode_state_as_update_v1(&StateVector::default());
+        let bytes = doc
+            .transact()
+            .encode_state_as_update_v1(&StateVector::default());
         bytes
     }
 
@@ -85,7 +95,10 @@ impl RoomManager {
         Self::default()
     }
     pub fn get_or_create(&self, note: NoteId) -> Arc<Room> {
-        self.rooms.entry(note).or_insert_with(|| Arc::new(Room::new(note))).clone()
+        self.rooms
+            .entry(note)
+            .or_insert_with(|| Arc::new(Room::new(note)))
+            .clone()
     }
     pub fn get(&self, note: NoteId) -> Option<Arc<Room>> {
         self.rooms.get(&note).map(|r| r.clone())
@@ -105,9 +118,10 @@ impl RoomManager {
 pub fn local_insert_update(initial: &[u8], idx: u32, text: &str) -> AppResult<Vec<u8>> {
     let doc = Doc::new();
     if !initial.is_empty() {
-        let upd = Update::decode_v1(initial)
+        let upd = Update::decode_v1(initial).map_err(|e| AppError::Validation(e.to_string()))?;
+        doc.transact_mut()
+            .apply_update(upd)
             .map_err(|e| AppError::Validation(e.to_string()))?;
-        doc.transact_mut().apply_update(upd).map_err(|e| AppError::Validation(e.to_string()))?;
     }
     let before = { doc.transact().state_vector() };
     let txt = doc.get_or_insert_text("body");
@@ -174,4 +188,3 @@ mod tests {
         assert!(mgr.is_empty());
     }
 }
-

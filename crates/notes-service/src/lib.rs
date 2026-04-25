@@ -30,7 +30,11 @@ where
 
 impl<U, N, A, E, B> Clone for NotesService<U, N, A, E, B>
 where
-    U: UserRepo, N: NoteRepo, A: AclRepo, E: EventStore, B: EventBus<DomainEvent>,
+    U: UserRepo,
+    N: NoteRepo,
+    A: AclRepo,
+    E: EventStore,
+    B: EventBus<DomainEvent>,
 {
     fn clone(&self) -> Self {
         Self {
@@ -45,10 +49,20 @@ where
 
 impl<U, N, A, E, B> NotesService<U, N, A, E, B>
 where
-    U: UserRepo, N: NoteRepo, A: AclRepo, E: EventStore, B: EventBus<DomainEvent>,
+    U: UserRepo,
+    N: NoteRepo,
+    A: AclRepo,
+    E: EventStore,
+    B: EventBus<DomainEvent>,
 {
     pub fn new(users: Arc<U>, notes: Arc<N>, acls: Arc<A>, events: Arc<E>, bus: Arc<B>) -> Self {
-        Self { users, notes, acls, events, bus }
+        Self {
+            users,
+            notes,
+            acls,
+            events,
+            bus,
+        }
     }
 
     async fn emit(&self, evt: DomainEvent) -> AppResult<()> {
@@ -80,7 +94,12 @@ where
         let n = Note::create(owner, &title)?;
         self.notes.insert(&n).await?;
         self.acls
-            .grant(&NoteAcl { note_id: n.id, user_id: owner, role: Role::Owner, granted_at: Utc::now() })
+            .grant(&NoteAcl {
+                note_id: n.id,
+                user_id: owner,
+                role: Role::Owner,
+                granted_at: Utc::now(),
+            })
             .await?;
         self.emit(DomainEvent::NoteCreated {
             id: EventId::new(),
@@ -95,7 +114,9 @@ where
 
     pub async fn rename(&self, actor: UserId, note: NoteId, title: String) -> AppResult<Note> {
         let (n, role) = self.require_role(note, actor).await?;
-        let session = EditSession::<Idle>::open(n, actor, role)?.rename(title)?.commit();
+        let session = EditSession::<Idle>::open(n, actor, role)?
+            .rename(title)?
+            .commit();
         self.notes.update(&session.note).await?;
         self.emit(DomainEvent::NoteRenamed {
             id: EventId::new(),
@@ -113,8 +134,12 @@ where
             return Err(AppError::Forbidden("only owner can delete".into()));
         }
         self.notes.delete(n.id).await?;
-        self.emit(DomainEvent::NoteDeleted { id: EventId::new(), note_id: note, at: Utc::now() })
-            .await?;
+        self.emit(DomainEvent::NoteDeleted {
+            id: EventId::new(),
+            note_id: note,
+            at: Utc::now(),
+        })
+        .await?;
         Ok(())
     }
 
@@ -140,7 +165,12 @@ where
         if target.id == actor {
             return Err(AppError::Validation("cannot share with yourself".into()));
         }
-        let acl = NoteAcl { note_id: note, user_id: target.id, role, granted_at: Utc::now() };
+        let acl = NoteAcl {
+            note_id: note,
+            user_id: target.id,
+            role,
+            granted_at: Utc::now(),
+        };
         self.acls.grant(&acl).await?;
         self.emit(DomainEvent::NoteShared {
             id: EventId::new(),
@@ -188,9 +218,13 @@ where
         let mut owned = self.notes.for_user(user).await?;
         let shared = self.acls.notes_for_user(user).await?;
         for nid in shared {
-            if owned.iter().any(|n| n.id == nid) { continue; }
+            if owned.iter().any(|n| n.id == nid) {
+                continue;
+            }
             if let Some(n) = self.notes.by_id(nid).await? {
-                if !n.deleted { owned.push(n); }
+                if !n.deleted {
+                    owned.push(n);
+                }
             }
         }
         owned.retain(|n| !n.deleted);
@@ -208,10 +242,18 @@ where
 mod tests {
     use super::*;
     use tn_common::eventbus::InProcBus;
-    use tn_infra::repos::{InMemoryAclRepo, InMemoryEventStore, InMemoryNoteRepo, InMemoryUserRepo};
     use tn_domain::user::User;
+    use tn_infra::repos::{
+        InMemoryAclRepo, InMemoryEventStore, InMemoryNoteRepo, InMemoryUserRepo,
+    };
 
-    type Svc = NotesService<InMemoryUserRepo, InMemoryNoteRepo, InMemoryAclRepo, InMemoryEventStore, InProcBus<DomainEvent>>;
+    type Svc = NotesService<
+        InMemoryUserRepo,
+        InMemoryNoteRepo,
+        InMemoryAclRepo,
+        InMemoryEventStore,
+        InProcBus<DomainEvent>,
+    >;
 
     async fn fixture() -> (Svc, UserId, UserId) {
         let users = Arc::new(InMemoryUserRepo::default());
@@ -219,8 +261,18 @@ mod tests {
         let acls = Arc::new(InMemoryAclRepo::default());
         let events = Arc::new(InMemoryEventStore::default());
         let bus = Arc::new(InProcBus::<DomainEvent>::new(64));
-        let alice = User::builder().email("a@x").display_name("A").password_hash("h").build().unwrap();
-        let bob = User::builder().email("b@x").display_name("B").password_hash("h").build().unwrap();
+        let alice = User::builder()
+            .email("a@x")
+            .display_name("A")
+            .password_hash("h")
+            .build()
+            .unwrap();
+        let bob = User::builder()
+            .email("b@x")
+            .display_name("B")
+            .password_hash("h")
+            .build()
+            .unwrap();
         users.create(&alice).await.unwrap();
         users.create(&bob).await.unwrap();
         let svc = NotesService::new(users, notes, acls, events, bus);
@@ -291,7 +343,9 @@ mod tests {
     async fn share_unknown_email_404s() {
         let (svc, alice, _) = fixture().await;
         let n = svc.create(alice, "T".into()).await.unwrap();
-        assert!(svc.share(alice, n.id, "ghost@x", Role::Editor).await.is_err());
+        assert!(svc
+            .share(alice, n.id, "ghost@x", Role::Editor)
+            .await
+            .is_err());
     }
 }
-

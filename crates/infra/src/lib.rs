@@ -5,6 +5,5 @@
 
 pub mod auth;
 pub mod password;
-pub mod shard;
 pub mod repos;
-
+pub mod shard;

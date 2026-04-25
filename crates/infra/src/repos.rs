@@ -100,8 +100,15 @@ impl NoteRepo for InMemoryNoteRepo {
         Ok(self.notes.get(&id).map(|v| v.clone()))
     }
     async fn for_user(&self, user: UserId) -> AppResult<Vec<Note>> {
-        let ids = self.by_owner.get(&user).map(|v| v.clone()).unwrap_or_default();
-        Ok(ids.into_iter().filter_map(|id| self.notes.get(&id).map(|v| v.clone())).collect())
+        let ids = self
+            .by_owner
+            .get(&user)
+            .map(|v| v.clone())
+            .unwrap_or_default();
+        Ok(ids
+            .into_iter()
+            .filter_map(|id| self.notes.get(&id).map(|v| v.clone()))
+            .collect())
     }
     async fn delete(&self, id: NoteId) -> AppResult<()> {
         if let Some(mut entry) = self.notes.get_mut(&id) {
@@ -147,10 +154,18 @@ impl AclRepo for InMemoryAclRepo {
             .and_then(|v| v.iter().find(|a| a.user_id == user).map(|a| a.role)))
     }
     async fn collaborators(&self, note: NoteId) -> AppResult<Vec<NoteAcl>> {
-        Ok(self.by_note.get(&note).map(|v| v.clone()).unwrap_or_default())
+        Ok(self
+            .by_note
+            .get(&note)
+            .map(|v| v.clone())
+            .unwrap_or_default())
     }
     async fn notes_for_user(&self, user: UserId) -> AppResult<Vec<NoteId>> {
-        Ok(self.by_user.get(&user).map(|v| v.clone()).unwrap_or_default())
+        Ok(self
+            .by_user
+            .get(&user)
+            .map(|v| v.clone())
+            .unwrap_or_default())
     }
 }
 
@@ -170,7 +185,10 @@ impl EventStore for InMemoryEventStore {
     async fn list(&self) -> AppResult<Vec<DomainEvent>> {
         let mut keys: Vec<u64> = self.events.iter().map(|e| *e.key()).collect();
         keys.sort();
-        Ok(keys.into_iter().filter_map(|k| self.events.get(&k).map(|v| v.clone())).collect())
+        Ok(keys
+            .into_iter()
+            .filter_map(|k| self.events.get(&k).map(|v| v.clone()))
+            .collect())
     }
 }
 
@@ -182,9 +200,19 @@ mod tests {
     #[tokio::test]
     async fn user_repo_unique_email() {
         let r = InMemoryUserRepo::default();
-        let u = User::builder().email("a@b.com").display_name("A").password_hash("h").build().unwrap();
+        let u = User::builder()
+            .email("a@b.com")
+            .display_name("A")
+            .password_hash("h")
+            .build()
+            .unwrap();
         r.create(&u).await.unwrap();
-        let dup = User::builder().email("a@b.com").display_name("B").password_hash("h").build().unwrap();
+        let dup = User::builder()
+            .email("a@b.com")
+            .display_name("B")
+            .password_hash("h")
+            .build()
+            .unwrap();
         assert!(r.create(&dup).await.is_err());
     }
 
@@ -193,10 +221,16 @@ mod tests {
         let r = InMemoryAclRepo::default();
         let nid = NoteId::new();
         let uid = UserId::new();
-        r.grant(&NoteAcl { note_id: nid, user_id: uid, role: Role::Editor, granted_at: Utc::now() }).await.unwrap();
+        r.grant(&NoteAcl {
+            note_id: nid,
+            user_id: uid,
+            role: Role::Editor,
+            granted_at: Utc::now(),
+        })
+        .await
+        .unwrap();
         assert_eq!(r.role_of(nid, uid).await.unwrap(), Some(Role::Editor));
         r.revoke(nid, uid).await.unwrap();
         assert_eq!(r.role_of(nid, uid).await.unwrap(), None);
     }
 }
-

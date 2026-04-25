@@ -62,7 +62,9 @@ async fn playground() -> HttpResponse {
         ))
 }
 
-async fn health() -> &'static str { "ok" }
+async fn health() -> &'static str {
+    "ok"
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -98,4 +100,3 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
-

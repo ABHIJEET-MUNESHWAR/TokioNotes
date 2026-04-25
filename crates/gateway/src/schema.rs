@@ -83,7 +83,9 @@ pub struct QueryRoot;
 
 #[Object]
 impl QueryRoot {
-    async fn health(&self) -> &'static str { "ok" }
+    async fn health(&self) -> &'static str {
+        "ok"
+    }
 
     async fn me(&self, ctx: &Context<'_>) -> Result<UserDto> {
         let uid = current_user(ctx)?;
@@ -104,7 +106,9 @@ impl QueryRoot {
         let st = ctx.data::<AppState>()?;
         let notes = st.notes.list_for(uid).await.map_err(to_gql)?;
         let mut out = Vec::with_capacity(notes.len());
-        for n in notes { out.push(st.note_dto(n, uid).await); }
+        for n in notes {
+            out.push(st.note_dto(n, uid).await);
+        }
         Ok(out)
     }
 
@@ -130,13 +134,28 @@ impl QueryRoot {
         Ok(st.ai.summarize(&body).await.map_err(to_gql)?.text)
     }
 
-    async fn ai_report(&self, ctx: &Context<'_>, id: NoteId, instruction: String) -> Result<AgentReportDto> {
+    async fn ai_report(
+        &self,
+        ctx: &Context<'_>,
+        id: NoteId,
+        instruction: String,
+    ) -> Result<AgentReportDto> {
         let uid = current_user(ctx)?;
         let st = ctx.data::<AppState>()?;
         let _ = st.notes.note(uid, id).await.map_err(to_gql)?;
-        let body = match st.rooms.get(id) { Some(r) => r.body_text().await, None => String::new() };
-        let r = st.ai.agent_report(&body, &instruction).await.map_err(to_gql)?;
-        Ok(AgentReportDto { summary: r.summary.text, tags: r.tags })
+        let body = match st.rooms.get(id) {
+            Some(r) => r.body_text().await,
+            None => String::new(),
+        };
+        let r = st
+            .ai
+            .agent_report(&body, &instruction)
+            .await
+            .map_err(to_gql)?;
+        Ok(AgentReportDto {
+            summary: r.summary.text,
+            tags: r.tags,
+        })
     }
 }
 
@@ -147,25 +166,42 @@ pub struct MutationRoot;
 #[Object]
 impl MutationRoot {
     async fn register(
-        &self, ctx: &Context<'_>, email: String, display_name: String, password: String,
+        &self,
+        ctx: &Context<'_>,
+        email: String,
+        display_name: String,
+        password: String,
     ) -> Result<AuthPayload> {
         let st = ctx.data::<AppState>()?;
-        let r = st.auth.register(&email, &display_name, &password).await.map_err(to_gql)?;
+        let r = st
+            .auth
+            .register(&email, &display_name, &password)
+            .await
+            .map_err(to_gql)?;
         Ok(AuthPayload {
             user: UserDto {
-                id: r.user.id, email: r.user.email, display_name: r.user.display_name,
+                id: r.user.id,
+                email: r.user.email,
+                display_name: r.user.display_name,
                 created_at: r.user.created_at,
             },
             token: r.token,
         })
     }
 
-    async fn login(&self, ctx: &Context<'_>, email: String, password: String) -> Result<AuthPayload> {
+    async fn login(
+        &self,
+        ctx: &Context<'_>,
+        email: String,
+        password: String,
+    ) -> Result<AuthPayload> {
         let st = ctx.data::<AppState>()?;
         let r = st.auth.login(&email, &password).await.map_err(to_gql)?;
         Ok(AuthPayload {
             user: UserDto {
-                id: r.user.id, email: r.user.email, display_name: r.user.display_name,
+                id: r.user.id,
+                email: r.user.email,
+                display_name: r.user.display_name,
                 created_at: r.user.created_at,
             },
             token: r.token,
@@ -195,10 +231,20 @@ impl MutationRoot {
         Ok(true)
     }
 
-    async fn share_note(&self, ctx: &Context<'_>, id: NoteId, email: String, role: Role) -> Result<CollaboratorDto> {
+    async fn share_note(
+        &self,
+        ctx: &Context<'_>,
+        id: NoteId,
+        email: String,
+        role: Role,
+    ) -> Result<CollaboratorDto> {
         let uid = current_user(ctx)?;
         let st = ctx.data::<AppState>()?;
-        let acl = st.notes.share(uid, id, &email, role).await.map_err(to_gql)?;
+        let acl = st
+            .notes
+            .share(uid, id, &email, role)
+            .await
+            .map_err(to_gql)?;
         Ok(st.collaborator_dto(acl).await)
     }
 
@@ -212,12 +258,19 @@ impl MutationRoot {
     /// Apply a base64-encoded Y-CRDT update to a note. Returns the new
     /// snapshot (base64). Requires at least `Editor` role; viewers are
     /// rejected with `Forbidden`.
-    async fn apply_ops(&self, ctx: &Context<'_>, note_id: NoteId, update_b64: String) -> Result<String> {
+    async fn apply_ops(
+        &self,
+        ctx: &Context<'_>,
+        note_id: NoteId,
+        update_b64: String,
+    ) -> Result<String> {
         let uid = current_user(ctx)?;
         let st = ctx.data::<AppState>()?;
         // Permission gate — must be editor or owner.
         let _ = st.notes.note_for_edit(uid, note_id).await.map_err(to_gql)?;
-        let bytes = B64.decode(update_b64.as_bytes()).map_err(|e| Error::new(e.to_string()))?;
+        let bytes = B64
+            .decode(update_b64.as_bytes())
+            .map_err(|e| Error::new(e.to_string()))?;
         let room = st.rooms.get_or_create(note_id);
         room.apply(&bytes).await.map_err(to_gql)?;
         Ok(B64.encode(room.snapshot().await))
@@ -231,14 +284,21 @@ pub struct SubscriptionRoot;
 #[Subscription]
 impl SubscriptionRoot {
     /// Stream Y-CRDT updates as they are applied to a note's room.
-    async fn note_ops(&self, ctx: &Context<'_>, note_id: NoteId) -> Result<impl Stream<Item = OpEvent>> {
+    async fn note_ops(
+        &self,
+        ctx: &Context<'_>,
+        note_id: NoteId,
+    ) -> Result<impl Stream<Item = OpEvent>> {
         let uid = current_user(ctx)?;
         let st = ctx.data::<AppState>()?;
         let _ = st.notes.note(uid, note_id).await.map_err(to_gql)?;
         let room = st.rooms.get_or_create(note_id);
         let rx = room.subscribe();
         let s = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(|r| async move {
-            r.ok().map(|f| OpEvent { note_id: f.note, update_b64: B64.encode(&f.update) })
+            r.ok().map(|f| OpEvent {
+                note_id: f.note,
+                update_b64: B64.encode(&f.update),
+            })
         });
         Ok(s)
     }
@@ -264,8 +324,12 @@ impl AppState {
                 .unwrap_or(Role::Viewer)
         };
         NoteDto {
-            id: n.id, owner_id: n.owner_id, title: n.title,
-            created_at: n.created_at, updated_at: n.updated_at, version: n.version,
+            id: n.id,
+            owner_id: n.owner_id,
+            title: n.title,
+            created_at: n.created_at,
+            updated_at: n.updated_at,
+            version: n.version,
             my_role,
             snapshot_b64: B64.encode(snap),
         }
@@ -302,7 +366,9 @@ impl AppState {
     }
 }
 
-fn to_gql(e: tn_common::error::AppError) -> Error { Error::new(e.to_string()) }
+fn to_gql(e: tn_common::error::AppError) -> Error {
+    Error::new(e.to_string())
+}
 
 pub type AppSchema = Schema<QueryRoot, MutationRoot, SubscriptionRoot>;
 
@@ -378,20 +444,31 @@ mod tests {
         use futures::StreamExt;
         let (schema, _) = schema_and_state();
         let alice = token_for(&schema, "alice2@x.com").await;
-        let req = Request::new(r#"mutation{createNote(title:"t"){id}}"#).data(AuthToken(alice.clone()));
+        let req =
+            Request::new(r#"mutation{createNote(title:"t"){id}}"#).data(AuthToken(alice.clone()));
         let r = schema.execute(req).await;
-        let nid = serde_json::to_value(&r.data).unwrap()["createNote"]["id"].as_str().unwrap().to_string();
+        let nid = serde_json::to_value(&r.data).unwrap()["createNote"]["id"]
+            .as_str()
+            .unwrap()
+            .to_string();
 
         // Pre-create the room so the broadcast channel exists before the
         // subscription resolver attaches its receiver.
         let _state_room = {
-            let st_ref = schema.execute(Request::new(format!(r#"{{ note(id:"{}"){{ id }} }}"#, nid))
-                .data(AuthToken(alice.clone()))).await;
+            let st_ref = schema
+                .execute(
+                    Request::new(format!(r#"{{ note(id:"{}"){{ id }} }}"#, nid))
+                        .data(AuthToken(alice.clone())),
+                )
+                .await;
             assert!(st_ref.errors.is_empty());
         };
 
-        let sub_req = Request::new(format!(r#"subscription{{ noteOps(noteId:"{}") {{ noteId updateB64 }} }}"#, nid))
-            .data(AuthToken(alice.clone()));
+        let sub_req = Request::new(format!(
+            r#"subscription{{ noteOps(noteId:"{}") {{ noteId updateB64 }} }}"#,
+            nid
+        ))
+        .data(AuthToken(alice.clone()));
         let mut stream = schema.execute_stream(sub_req);
 
         // Drive the subscription so the receiver is registered before we publish.
@@ -404,15 +481,18 @@ mod tests {
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             let m = Request::new(format!(
-                r#"mutation($u:String!){{ applyOps(noteId:"{}",updateB64:$u) }}"#, nid2
-            )).variables(Variables::from_json(json!({"u": upd2})))
-             .data(AuthToken(alice2));
+                r#"mutation($u:String!){{ applyOps(noteId:"{}",updateB64:$u) }}"#,
+                nid2
+            ))
+            .variables(Variables::from_json(json!({"u": upd2})))
+            .data(AuthToken(alice2));
             let _ = schema2.execute(m).await;
         });
 
-        let next = tokio::time::timeout(std::time::Duration::from_secs(2), stream.next()).await.unwrap();
+        let next = tokio::time::timeout(std::time::Duration::from_secs(2), stream.next())
+            .await
+            .unwrap();
         let resp = next.expect("stream item");
         assert!(resp.errors.is_empty(), "{:?}", resp.errors);
     }
 }
-

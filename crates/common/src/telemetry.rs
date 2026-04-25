@@ -11,4 +11,3 @@ pub fn init(service: &str) {
         .try_init();
     tracing::info!(service = service, "telemetry initialised");
 }
-

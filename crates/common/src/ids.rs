@@ -64,4 +64,3 @@ mod tests {
         // Compile-time guarantee: `let _: UserId = n;` would fail.
     }
 }
-

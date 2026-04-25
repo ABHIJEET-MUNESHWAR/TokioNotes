@@ -35,8 +35,15 @@ pub struct HeuristicAssistant;
 #[async_trait]
 impl AiAssistant for HeuristicAssistant {
     async fn summarize(&self, body: &str) -> AppResult<Summary> {
-        let text = body.split_whitespace().take(20).collect::<Vec<_>>().join(" ");
-        Ok(Summary { tokens: text.split_whitespace().count(), text })
+        let text = body
+            .split_whitespace()
+            .take(20)
+            .collect::<Vec<_>>()
+            .join(" ");
+        Ok(Summary {
+            tokens: text.split_whitespace().count(),
+            text,
+        })
     }
     async fn autocomplete(&self, prefix: &str) -> AppResult<String> {
         Ok(format!("{prefix}…"))
@@ -52,7 +59,11 @@ impl AiAssistant for HeuristicAssistant {
         tags.dedup();
         Ok(tags)
     }
-    async fn suggest_edits(&self, _body: &str, instruction: &str) -> AppResult<Vec<EditSuggestion>> {
+    async fn suggest_edits(
+        &self,
+        _body: &str,
+        instruction: &str,
+    ) -> AppResult<Vec<EditSuggestion>> {
         Ok(vec![EditSuggestion {
             anchor: 0,
             replacement: format!("// TODO: {instruction}\n"),
@@ -71,4 +82,3 @@ mod tests {
         assert!(s.text.starts_with("hello"));
     }
 }
-

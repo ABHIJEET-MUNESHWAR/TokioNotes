@@ -12,8 +12,12 @@ pub enum Role {
 }
 
 impl Role {
-    pub fn can_edit(self) -> bool { matches!(self, Role::Editor | Role::Owner) }
-    pub fn can_share(self) -> bool { matches!(self, Role::Owner) }
+    pub fn can_edit(self) -> bool {
+        matches!(self, Role::Editor | Role::Owner)
+    }
+    pub fn can_share(self) -> bool {
+        matches!(self, Role::Owner)
+    }
 }
 
 /// Note aggregate root. Mutation must go through `EditSession`.
@@ -78,7 +82,12 @@ impl EditSession<Idle> {
         if note.deleted {
             return Err(AppError::NotFound("note deleted".into()));
         }
-        Ok(EditSession { note, actor, role, _state: PhantomData })
+        Ok(EditSession {
+            note,
+            actor,
+            role,
+            _state: PhantomData,
+        })
     }
 }
 
@@ -93,7 +102,12 @@ impl EditSession<Editing> {
         Ok(self)
     }
     pub fn commit(self) -> EditSession<Committed> {
-        EditSession { note: self.note, actor: self.actor, role: self.role, _state: PhantomData }
+        EditSession {
+            note: self.note,
+            actor: self.actor,
+            role: self.role,
+            _state: PhantomData,
+        }
     }
 }
 
@@ -127,4 +141,3 @@ mod tests {
         assert!(Note::create(UserId::new(), "").is_err());
     }
 }
-

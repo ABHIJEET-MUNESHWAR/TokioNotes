@@ -112,7 +112,11 @@ mod tests {
             let c = c2.clone();
             async move {
                 let n = c.fetch_add(1, Ordering::SeqCst);
-                if n < 2 { Err(AppError::Upstream("nope".into())) } else { Ok(42) }
+                if n < 2 {
+                    Err(AppError::Upstream("nope".into()))
+                } else {
+                    Ok(42)
+                }
             }
         })
         .await;
@@ -123,10 +127,11 @@ mod tests {
     async fn breaker_opens() {
         let cb = CircuitBreaker::new(2, Duration::from_secs(60));
         for _ in 0..2 {
-            let _: AppResult<()> = cb.call(|| async { Err(AppError::Upstream("x".into())) }).await;
+            let _: AppResult<()> = cb
+                .call(|| async { Err(AppError::Upstream("x".into())) })
+                .await;
         }
         let r: AppResult<()> = cb.call(|| async { Ok(()) }).await;
         assert!(matches!(r, Err(AppError::Upstream(_))));
     }
 }
-

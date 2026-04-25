@@ -14,4 +14,3 @@ where
     async fn save(&self, entity: &T) -> AppResult<()>;
     async fn delete(&self, id: ID) -> AppResult<()>;
 }
-
