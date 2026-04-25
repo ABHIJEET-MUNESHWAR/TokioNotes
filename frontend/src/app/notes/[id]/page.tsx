@@ -1,5 +1,6 @@
 "use client";
 import { useMutation, useQuery, useSubscription } from "@apollo/client";
+import { notFound } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
 import {
@@ -56,10 +57,20 @@ export default function NotePage({ params }: { params: { id: string } }) {
 
   const [applyOps] = useMutation(APPLY_OPS);
   const [renameNote] = useMutation(RENAME_NOTE);
-  const { data: notesData } = useQuery(MY_NOTES, { fetchPolicy: "cache-and-network" });
+  const { data: notesData, loading: notesLoading } = useQuery(MY_NOTES, {
+    fetchPolicy: "cache-and-network",
+  });
 
   if (!docRef.current) docRef.current = new Y.Doc();
   const doc = docRef.current;
+
+  // If we've finished loading the user's notes and the requested id isn't
+  // among them (deleted, share revoked, or never existed) hand off to the
+  // global 404 page.
+  if (!notesLoading && notesData) {
+    const exists = (notesData.myNotes ?? []).some((n: any) => n.id === noteId);
+    if (!exists) notFound();
+  }
 
   // 1. Seed the local Y.Doc from the server snapshot exactly once.
   // 2. Track the title for the renameNote mutation.

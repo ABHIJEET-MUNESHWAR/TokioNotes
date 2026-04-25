@@ -220,3 +220,17 @@ a:hover { text-decoration: underline; }
 @media (max-width: 600px) {
   .tn-user-meta { display: none; }
 }
+
+.tn-not-found { padding-top: 32px; padding-bottom: 32px; }
+.tn-404-code {
+  font-size: 96px;
+  font-weight: 800;
+  letter-spacing: -2px;
+  line-height: 1;
+  color: var(--primary);
+  background: linear-gradient(180deg, var(--primary) 0%, color-mix(in srgb, var(--primary) 60%, transparent) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 4px;
+}
