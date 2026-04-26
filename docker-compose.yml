@@ -10,7 +10,10 @@ services:
     ports: ["5432:5432"]
     volumes: ["pgdata:/var/lib/postgresql/data"]
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U tn"]
+      # `-d` is required: without it, pg_isready probes a database named
+      # after the user (`tn`) which doesn't exist and the check fails with
+      # `FATAL: database "tn" does not exist`.
+      test: ["CMD-SHELL", "pg_isready -U tn -d tokionotes"]
       interval: 5s
       retries: 10
 
