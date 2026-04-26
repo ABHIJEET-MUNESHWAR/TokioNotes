@@ -5,5 +5,7 @@
 
 pub mod auth;
 pub mod password;
+#[cfg(feature = "postgres")]
+pub mod pg;
 pub mod repos;
 pub mod shard;

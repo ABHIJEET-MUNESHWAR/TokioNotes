@@ -46,6 +46,7 @@ pub trait EventStore: Send + Sync {
 
 // ---------- In-memory implementations ---------------------------------------
 
+
 #[derive(Default, Clone)]
 pub struct InMemoryUserRepo {
     by_id: Arc<DashMap<UserId, User>>,
@@ -189,6 +190,178 @@ impl EventStore for InMemoryEventStore {
             .into_iter()
             .filter_map(|k| self.events.get(&k).map(|v| v.clone()))
             .collect())
+    }
+}
+
+// ----- Storage-agnostic enum wrappers --------------------------------------
+//
+// Each `Any*` variant implements its trait by delegating to the chosen
+// backend. The gateway picks a variant at boot time based on the
+// `DATABASE_URL` environment variable so service code stays generic and
+// existing in-memory tests keep working unchanged.
+
+#[derive(Clone)]
+pub enum AnyUserRepo {
+    Mem(InMemoryUserRepo),
+    #[cfg(feature = "postgres")]
+    Pg(crate::pg::PgUserRepo),
+}
+impl Default for AnyUserRepo {
+    fn default() -> Self {
+        Self::Mem(InMemoryUserRepo::default())
+    }
+}
+#[async_trait]
+impl UserRepo for AnyUserRepo {
+    async fn create(&self, u: &User) -> AppResult<()> {
+        match self {
+            Self::Mem(r) => r.create(u).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.create(u).await,
+        }
+    }
+    async fn by_email(&self, email: &str) -> AppResult<Option<User>> {
+        match self {
+            Self::Mem(r) => r.by_email(email).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.by_email(email).await,
+        }
+    }
+    async fn by_id(&self, id: UserId) -> AppResult<Option<User>> {
+        match self {
+            Self::Mem(r) => r.by_id(id).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.by_id(id).await,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum AnyNoteRepo {
+    Mem(InMemoryNoteRepo),
+    #[cfg(feature = "postgres")]
+    Pg(crate::pg::PgNoteRepo),
+}
+impl Default for AnyNoteRepo {
+    fn default() -> Self {
+        Self::Mem(InMemoryNoteRepo::default())
+    }
+}
+#[async_trait]
+impl NoteRepo for AnyNoteRepo {
+    async fn insert(&self, n: &Note) -> AppResult<()> {
+        match self {
+            Self::Mem(r) => r.insert(n).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.insert(n).await,
+        }
+    }
+    async fn update(&self, n: &Note) -> AppResult<()> {
+        match self {
+            Self::Mem(r) => r.update(n).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.update(n).await,
+        }
+    }
+    async fn by_id(&self, id: NoteId) -> AppResult<Option<Note>> {
+        match self {
+            Self::Mem(r) => r.by_id(id).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.by_id(id).await,
+        }
+    }
+    async fn for_user(&self, user: UserId) -> AppResult<Vec<Note>> {
+        match self {
+            Self::Mem(r) => r.for_user(user).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.for_user(user).await,
+        }
+    }
+    async fn delete(&self, id: NoteId) -> AppResult<()> {
+        match self {
+            Self::Mem(r) => r.delete(id).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.delete(id).await,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum AnyAclRepo {
+    Mem(InMemoryAclRepo),
+    #[cfg(feature = "postgres")]
+    Pg(crate::pg::PgAclRepo),
+}
+impl Default for AnyAclRepo {
+    fn default() -> Self {
+        Self::Mem(InMemoryAclRepo::default())
+    }
+}
+#[async_trait]
+impl AclRepo for AnyAclRepo {
+    async fn grant(&self, acl: &NoteAcl) -> AppResult<()> {
+        match self {
+            Self::Mem(r) => r.grant(acl).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.grant(acl).await,
+        }
+    }
+    async fn revoke(&self, note: NoteId, user: UserId) -> AppResult<()> {
+        match self {
+            Self::Mem(r) => r.revoke(note, user).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.revoke(note, user).await,
+        }
+    }
+    async fn role_of(&self, note: NoteId, user: UserId) -> AppResult<Option<Role>> {
+        match self {
+            Self::Mem(r) => r.role_of(note, user).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.role_of(note, user).await,
+        }
+    }
+    async fn collaborators(&self, note: NoteId) -> AppResult<Vec<NoteAcl>> {
+        match self {
+            Self::Mem(r) => r.collaborators(note).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.collaborators(note).await,
+        }
+    }
+    async fn notes_for_user(&self, user: UserId) -> AppResult<Vec<NoteId>> {
+        match self {
+            Self::Mem(r) => r.notes_for_user(user).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.notes_for_user(user).await,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum AnyEventStore {
+    Mem(InMemoryEventStore),
+    #[cfg(feature = "postgres")]
+    Pg(crate::pg::PgEventStore),
+}
+impl Default for AnyEventStore {
+    fn default() -> Self {
+        Self::Mem(InMemoryEventStore::default())
+    }
+}
+#[async_trait]
+impl EventStore for AnyEventStore {
+    async fn append(&self, event: DomainEvent) -> AppResult<()> {
+        match self {
+            Self::Mem(r) => r.append(event).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.append(event).await,
+        }
+    }
+    async fn list(&self) -> AppResult<Vec<DomainEvent>> {
+        match self {
+            Self::Mem(r) => r.list().await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.list().await,
+        }
     }
 }
 

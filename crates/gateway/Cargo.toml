@@ -10,7 +10,7 @@ path = "src/main.rs"
 [dependencies]
 tn-common = { path = "../common" }
 tn-domain = { path = "../domain" }
-tn-infra  = { path = "../infra" }
+tn-infra  = { path = "../infra", features = ["postgres"] }
 tn-auth-service   = { path = "../auth-service" }
 tn-notes-service  = { path = "../notes-service" }
 tn-collab-service = { path = "../collab-service" }
@@ -31,6 +31,10 @@ actix-web = { workspace = true }
 actix-cors = { workspace = true }
 futures = { workspace = true }
 base64 = "0.22"
+
+[features]
+default = ["postgres"]
+postgres = ["tn-infra/postgres"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
