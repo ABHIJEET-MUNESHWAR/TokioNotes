@@ -1,0 +1,31 @@
+# Keep the build context small and predictable.
+# Anything matched here is invisible to `docker build` / `docker compose build`.
+
+# Local build artefacts
+target/
+**/target/
+**/*.rs.bk
+
+# Frontend (built in its own image via ./frontend/Dockerfile)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/tsconfig.tsbuildinfo
+
+# VCS / IDE / OS noise
+.git/
+.gitignore
+.github/
+.idea/
+.vscode/
+.DS_Store
+
+# Docs / runtime files that don't belong in the image
+README.md
+PLAN.md
+build.log
+postman/
+docker-compose.yml
+Dockerfile
+frontend/Dockerfile
+
