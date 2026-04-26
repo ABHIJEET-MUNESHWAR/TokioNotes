@@ -236,6 +236,11 @@ Services exposed:
 - Frontend → http://localhost:9000
 - Postgres → :5432, Redis → :6379
 
+The compose stack also runs a one-shot **`migrator`** service after Postgres
+becomes healthy, applying every SQL file in [`migrations/`](./migrations/) in
+order. See [`migrations/README.md`](./migrations/README.md) for how to run
+the same migrations with `psql` or `sqlx-cli` outside Docker.
+
 ### 👥 Sharing notes & collaborating in real time
 
 End-user walk-through (UI):

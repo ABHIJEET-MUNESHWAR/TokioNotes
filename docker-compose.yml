@@ -21,6 +21,31 @@ services:
     image: redis:7-alpine
     ports: ["6379:6379"]
 
+  # One-shot job: applies every SQL file under ./migrations in order.
+  # Idempotent — every statement is `IF NOT EXISTS` / `ON CONFLICT`.
+  migrator:
+    image: postgres:16-alpine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGUSER: tn
+      PGPASSWORD: tn
+      PGDATABASE: tokionotes
+    volumes:
+      - ./migrations:/migrations:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      'set -e;
+       echo "applying migrations…";
+       for f in /migrations/*.sql; do
+         echo " → $$f";
+         psql -v ON_ERROR_STOP=1 -f "$$f";
+       done;
+       echo "migrations done.";'
+    restart: "no"
+
   gateway:
     build: .
     environment:
@@ -34,6 +59,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
+      migrator:
+        condition: service_completed_successfully
 
   frontend:
     build: ./frontend
