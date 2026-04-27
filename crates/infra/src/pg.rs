@@ -200,13 +200,12 @@ impl NoteRepo for PgNoteRepo {
     }
 
     async fn delete(&self, id: NoteId) -> AppResult<()> {
-        let res = sqlx::query(
-            "UPDATE notes SET deleted_at = now(), updated_at = now() WHERE id = $1",
-        )
-        .bind(id.into_uuid())
-        .execute(&self.pool)
-        .await
-        .map_err(map_sqlx)?;
+        let res =
+            sqlx::query("UPDATE notes SET deleted_at = now(), updated_at = now() WHERE id = $1")
+                .bind(id.into_uuid())
+                .execute(&self.pool)
+                .await
+                .map_err(map_sqlx)?;
         if res.rows_affected() == 0 {
             return Err(AppError::NotFound(id.to_string()));
         }
@@ -403,12 +402,11 @@ impl EventStore for PgEventStore {
     }
 
     async fn list(&self) -> AppResult<Vec<DomainEvent>> {
-        let rows = sqlx::query(
-            "SELECT payload FROM domain_events ORDER BY occurred_at ASC, seq ASC",
-        )
-        .fetch_all(&self.pool)
-        .await
-        .map_err(map_sqlx)?;
+        let rows =
+            sqlx::query("SELECT payload FROM domain_events ORDER BY occurred_at ASC, seq ASC")
+                .fetch_all(&self.pool)
+                .await
+                .map_err(map_sqlx)?;
         let mut out = Vec::with_capacity(rows.len());
         for r in rows {
             let v: serde_json::Value = r.get("payload");
@@ -419,5 +417,3 @@ impl EventStore for PgEventStore {
         Ok(out)
     }
 }
-
-

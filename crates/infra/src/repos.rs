@@ -46,7 +46,6 @@ pub trait EventStore: Send + Sync {
 
 // ---------- In-memory implementations ---------------------------------------
 
-
 #[derive(Default, Clone)]
 pub struct InMemoryUserRepo {
     by_id: Arc<DashMap<UserId, User>>,
