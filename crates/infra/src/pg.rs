@@ -20,7 +20,8 @@ use tn_domain::events::DomainEvent;
 use tn_domain::note::{Note, NoteAcl, Role};
 use tn_domain::user::User;
 
-use crate::repos::{AclRepo, EventStore, NoteRepo, SnapshotStore, UserRepo};fn map_sqlx(e: sqlx::Error) -> AppError {
+use crate::repos::{AclRepo, EventStore, NoteRepo, SnapshotStore, UserRepo};
+fn map_sqlx(e: sqlx::Error) -> AppError {
     if let sqlx::Error::Database(db) = &e {
         if db.code().as_deref() == Some("23505") {
             return AppError::Conflict(db.message().to_string());
@@ -469,4 +470,3 @@ impl SnapshotStore for PgSnapshotStore {
         Ok(())
     }
 }
-

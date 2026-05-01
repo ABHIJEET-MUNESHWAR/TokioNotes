@@ -2,7 +2,9 @@
 --
 -- Mirrors PLAN.md §2:
 --   * Users live on a single global shard (low write rate).
---   * `notes`, `note_acl`, `note_snapshots` are hash-partitioned by owner_id.
+--   * `notes`, `note_acl` are hash-partitioned by owner_id.
+--   * `note_snapshots` keeps the latest Y-CRDT state per note (one row,
+--     upserted on every save) so bodies survive a gateway restart.
 --   * `domain_events` is range-partitioned by `occurred_at` (monthly).
 --   * `sagas` tracks long-running multi-step workflows (e.g. shareNote).
 --

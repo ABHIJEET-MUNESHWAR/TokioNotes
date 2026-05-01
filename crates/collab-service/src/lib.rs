@@ -13,7 +13,8 @@ use dashmap::DashMap;
 use std::sync::Arc;
 use tn_common::error::{AppError, AppResult};
 use tn_common::ids::NoteId;
-use tokio::sync::{broadcast, Mutex};
+use tn_infra::repos::{AnySnapshotStore, SnapshotStore};
+use tokio::sync::{broadcast, Mutex, OnceCell};
 use yrs::updates::decoder::Decode;
 use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact, Update};
 
@@ -27,10 +28,16 @@ pub struct Room {
     pub note: NoteId,
     doc: Mutex<Doc>,
     tx: broadcast::Sender<OpFrame>,
+    store: Arc<AnySnapshotStore>,
+    /// Resolves once we've replayed the persisted snapshot into `doc`.
+    /// Loading is async and `RoomManager::get_or_create` is sync, so we
+    /// hydrate lazily on first read/write — `OnceCell::get_or_try_init`
+    /// guarantees it runs at most once even with concurrent callers.
+    loaded: OnceCell<()>,
 }
 
 impl Room {
-    fn new(note: NoteId) -> Self {
+    fn new(note: NoteId, store: Arc<AnySnapshotStore>) -> Self {
         let doc = Doc::new();
         // Touch the root text so it exists in the doc.
         let _ = doc.get_or_insert_text("body");
@@ -39,6 +46,8 @@ impl Room {
             note,
             doc: Mutex::new(doc),
             tx,
+            store,
+            loaded: OnceCell::new(),
         }
     }
 
@@ -46,19 +55,56 @@ impl Room {
         self.tx.subscribe()
     }
 
+    async fn ensure_loaded(&self) -> AppResult<()> {
+        self.loaded
+            .get_or_try_init(|| async {
+                let Some(state) = self.store.latest(self.note).await? else {
+                    return Ok::<(), AppError>(());
+                };
+                let doc = self.doc.lock().await;
+                {
+                    // `Update` is `!Send` — keep it inside a single sync
+                    // scope that holds the lock; never cross `.await`.
+                    let upd = Update::decode_v1(&state)
+                        .map_err(|e| AppError::Validation(format!("snapshot decode: {e}")))?;
+                    let mut txn = doc.transact_mut();
+                    txn.apply_update(upd)
+                        .map_err(|e| AppError::Validation(e.to_string()))?;
+                }
+                drop(doc);
+                Ok(())
+            })
+            .await?;
+        Ok(())
+    }
+
     /// Apply an incoming update. The CRDT merges concurrent edits.
+    /// After applying, the new full state is persisted to the snapshot
+    /// store so the body survives a gateway restart.
     pub async fn apply(&self, update_bytes: &[u8]) -> AppResult<()> {
-        // The `Update` type is `!Send`; decode AFTER acquiring the mutex so
-        // it never crosses an `.await` boundary.
-        let doc = self.doc.lock().await;
-        {
-            let update = Update::decode_v1(update_bytes)
-                .map_err(|e| AppError::Validation(format!("bad update: {e}")))?;
-            let mut txn = doc.transact_mut();
-            txn.apply_update(update)
-                .map_err(|e| AppError::Validation(e.to_string()))?;
+        self.ensure_loaded().await?;
+        let new_state = {
+            let doc = self.doc.lock().await;
+            {
+                let update = Update::decode_v1(update_bytes)
+                    .map_err(|e| AppError::Validation(format!("bad update: {e}")))?;
+                let mut txn = doc.transact_mut();
+                txn.apply_update(update)
+                    .map_err(|e| AppError::Validation(e.to_string()))?;
+            }
+            let bytes = doc
+                .transact()
+                .encode_state_as_update_v1(&StateVector::default());
+            bytes
+        };
+        // Persist outside the doc lock so we don't serialise concurrent
+        // writers on a network-bound save. Best-effort: log on failure
+        // rather than rejecting the user's edit; the in-memory CRDT is
+        // still authoritative for live peers and the next successful
+        // save will catch up.
+        if let Err(e) = self.store.save(self.note, &new_state).await {
+            tracing::error!(note=%self.note, error=%e, "snapshot persist failed");
         }
-        drop(doc);
         // Best-effort fanout; lag is recoverable via state-vector resync.
         let _ = self.tx.send(OpFrame {
             note: self.note,
@@ -69,6 +115,9 @@ impl Room {
 
     /// Encode the full state as a single update for late joiners.
     pub async fn snapshot(&self) -> Vec<u8> {
+        if let Err(e) = self.ensure_loaded().await {
+            tracing::error!(note=%self.note, error=%e, "snapshot load failed");
+        }
         let doc = self.doc.lock().await;
         let bytes = doc
             .transact()
@@ -78,6 +127,9 @@ impl Room {
 
     /// Plain-text projection of the document body, for AI processing.
     pub async fn body_text(&self) -> String {
+        if let Err(e) = self.ensure_loaded().await {
+            tracing::error!(note=%self.note, error=%e, "snapshot load failed");
+        }
         let doc = self.doc.lock().await;
         let txt = doc.get_or_insert_text("body");
         let txn = doc.transact();
@@ -85,19 +137,38 @@ impl Room {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct RoomManager {
     rooms: Arc<DashMap<NoteId, Arc<Room>>>,
+    store: Arc<AnySnapshotStore>,
+}
+
+impl Default for RoomManager {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl RoomManager {
+    /// Build a manager backed by the in-memory snapshot store. Used by
+    /// unit tests and single-node dev runs without `DATABASE_URL`.
     pub fn new() -> Self {
-        Self::default()
+        Self::with_store(Arc::new(AnySnapshotStore::default()))
     }
+
+    /// Build a manager that persists/loads document state through the
+    /// supplied store (typically Postgres in production).
+    pub fn with_store(store: Arc<AnySnapshotStore>) -> Self {
+        Self {
+            rooms: Arc::new(DashMap::new()),
+            store,
+        }
+    }
+
     pub fn get_or_create(&self, note: NoteId) -> Arc<Room> {
         self.rooms
             .entry(note)
-            .or_insert_with(|| Arc::new(Room::new(note)))
+            .or_insert_with(|| Arc::new(Room::new(note, self.store.clone())))
             .clone()
     }
     pub fn get(&self, note: NoteId) -> Option<Arc<Room>> {

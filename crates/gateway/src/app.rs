@@ -7,8 +7,8 @@ use tn_domain::ai::HeuristicAssistant;
 use tn_domain::events::DomainEvent;
 use tn_infra::auth::JwtIssuer;
 use tn_infra::repos::{
-    AnyAclRepo, AnyEventStore, AnyNoteRepo, AnyUserRepo, InMemoryAclRepo, InMemoryEventStore,
-    InMemoryNoteRepo, InMemoryUserRepo,
+    AnyAclRepo, AnyEventStore, AnyNoteRepo, AnySnapshotStore, AnyUserRepo, InMemoryAclRepo,
+    InMemoryEventStore, InMemoryNoteRepo, InMemorySnapshotStore, InMemoryUserRepo,
 };
 use tn_notes_service::NotesService;
 
@@ -39,6 +39,7 @@ impl AppState {
         let notes = Arc::new(backends.notes);
         let acls = Arc::new(backends.acls);
         let events = Arc::new(backends.events);
+        let snapshots = Arc::new(backends.snapshots);
         let bus = Arc::new(build_bus());
 
         let auth = Arc::new(AuthService::new(
@@ -57,7 +58,7 @@ impl AppState {
         Self {
             auth,
             notes: notes_svc,
-            rooms: RoomManager::new(),
+            rooms: RoomManager::with_store(snapshots),
             ai,
             bus,
             users,
@@ -95,6 +96,7 @@ struct Backends {
     notes: AnyNoteRepo,
     acls: AnyAclRepo,
     events: AnyEventStore,
+    snapshots: AnySnapshotStore,
 }
 
 impl Backends {
@@ -108,7 +110,8 @@ impl Backends {
                         users: AnyUserRepo::Pg(tn_infra::pg::PgUserRepo::new(pool.clone())),
                         notes: AnyNoteRepo::Pg(tn_infra::pg::PgNoteRepo::new(pool.clone())),
                         acls: AnyAclRepo::Pg(tn_infra::pg::PgAclRepo::new(pool.clone())),
-                        events: AnyEventStore::Pg(tn_infra::pg::PgEventStore::new(pool)),
+                        events: AnyEventStore::Pg(tn_infra::pg::PgEventStore::new(pool.clone())),
+                        snapshots: AnySnapshotStore::Pg(tn_infra::pg::PgSnapshotStore::new(pool)),
                     }
                 }
                 Err(e) => {
@@ -134,6 +137,7 @@ impl Backends {
             notes: AnyNoteRepo::Mem(InMemoryNoteRepo::default()),
             acls: AnyAclRepo::Mem(InMemoryAclRepo::default()),
             events: AnyEventStore::Mem(InMemoryEventStore::default()),
+            snapshots: AnySnapshotStore::Mem(InMemorySnapshotStore::default()),
         }
     }
 }
