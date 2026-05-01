@@ -77,7 +77,7 @@ impl Room {
         let doc = Doc::new();
         // Touch the root text so it exists in the doc.
         let _ = doc.get_or_insert_text("body");
-        let (tx, _) = broadcast::channel(1024);
+        let (tx, _) = broadcast::channel(4096);
         let room = Arc::new(Self {
             note,
             doc: Mutex::new(doc),

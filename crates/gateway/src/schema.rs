@@ -300,23 +300,74 @@ pub struct SubscriptionRoot;
 #[Subscription]
 impl SubscriptionRoot {
     /// Stream Y-CRDT updates as they are applied to a note's room.
+    ///
+    /// To guarantee receivers always converge — even when the cached
+    /// snapshot they seeded from was stale, or the WebSocket reconnected
+    /// after dropping mid-edit — we send the **current full document
+    /// state as the very first frame**. Yjs `applyUpdate` is idempotent
+    /// so re-applying a snapshot the client already has is a no-op, and
+    /// re-applying a *newer* one heals divergence with no extra round-
+    /// trip.
+    ///
+    /// Subscribing happens *before* the snapshot is taken, so any update
+    /// landing in that window is queued in the broadcast channel and
+    /// delivered after the initial frame (Yjs merges it cleanly).
+    ///
+    /// If a slow consumer falls behind and the broadcast lags, instead
+    /// of silently dropping frames we re-emit a fresh snapshot to
+    /// resync.
     async fn note_ops(
         &self,
         ctx: &Context<'_>,
         note_id: NoteId,
     ) -> Result<impl Stream<Item = OpEvent>> {
+        use futures::stream::{self, StreamExt};
+        use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
+
         let uid = current_user(ctx)?;
         let st = ctx.data::<AppState>()?;
         let _ = st.notes.note(uid, note_id).await.map_err(to_gql)?;
         let room = st.rooms.get_or_create(note_id);
+
+        // Order matters: subscribe first, snapshot second. Anything that
+        // lands between the two ends up in the broadcast queue and is
+        // delivered *after* the initial snapshot — Yjs idempotence makes
+        // that safe even though the snapshot already contains it.
         let rx = room.subscribe();
-        let s = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(|r| async move {
-            r.ok().map(|f| OpEvent {
-                note_id: f.note,
-                update_b64: B64.encode(&f.update),
-            })
+        let initial_bytes = room.snapshot().await;
+        let initial = OpEvent {
+            note_id,
+            update_b64: B64.encode(&initial_bytes),
+        };
+
+        let room_for_resync = room.clone();
+        let live = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(move |r| {
+            let room = room_for_resync.clone();
+            async move {
+                match r {
+                    Ok(f) => Some(OpEvent {
+                        note_id: f.note,
+                        update_b64: B64.encode(&f.update),
+                    }),
+                    Err(BroadcastStreamRecvError::Lagged(missed)) => {
+                        // Receiver fell behind — re-send a full
+                        // snapshot so they catch up without losing
+                        // any committed state.
+                        tracing::warn!(
+                            note=%note_id, missed,
+                            "broadcast lagged; resyncing via snapshot"
+                        );
+                        let snap = room.snapshot().await;
+                        Some(OpEvent {
+                            note_id,
+                            update_b64: B64.encode(&snap),
+                        })
+                    }
+                }
+            }
         });
-        Ok(s)
+
+        Ok(stream::once(async move { initial }).chain(live))
     }
 
     /// Notify the *current* user when someone shares a note with them.

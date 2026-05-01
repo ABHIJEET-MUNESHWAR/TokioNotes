@@ -116,6 +116,22 @@ enum Role {
 type SubscriptionRoot {
 	"""
 	Stream Y-CRDT updates as they are applied to a note's room.
+	
+	To guarantee receivers always converge — even when the cached
+	snapshot they seeded from was stale, or the WebSocket reconnected
+	after dropping mid-edit — we send the **current full document
+	state as the very first frame**. Yjs `applyUpdate` is idempotent
+	so re-applying a snapshot the client already has is a no-op, and
+	re-applying a *newer* one heals divergence with no extra round-
+	trip.
+	
+	Subscribing happens *before* the snapshot is taken, so any update
+	landing in that window is queued in the broadcast channel and
+	delivered after the initial frame (Yjs merges it cleanly).
+	
+	If a slow consumer falls behind and the broadcast lags, instead
+	of silently dropping frames we re-emit a fresh snapshot to
+	resync.
 	"""
 	noteOps(noteId: NoteId!): OpEvent!
 	"""
