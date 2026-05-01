@@ -243,7 +243,7 @@ impl MutationRoot {
         let uid = current_user(ctx)?;
         let st = ctx.data::<AppState>()?;
         st.notes.delete(uid, id).await.map_err(to_gql)?;
-        st.rooms.close(id);
+        st.rooms.close(id).await;
         Ok(true)
     }
 
