@@ -7,6 +7,10 @@ edition.workspace = true
 name = "tn-gateway"
 path = "src/main.rs"
 
+[[bin]]
+name = "dump-schema"
+path = "src/bin/dump_schema.rs"
+
 [dependencies]
 tn-common = { path = "../common", features = ["redis"] }
 tn-domain = { path = "../domain" }

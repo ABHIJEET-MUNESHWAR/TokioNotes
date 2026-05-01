@@ -431,6 +431,27 @@ fn to_gql(e: tn_common::error::AppError) -> Error {
 
 pub type AppSchema = Schema<QueryRoot, MutationRoot, SubscriptionRoot>;
 
+/// Header prepended to `graphql/schema.graphql` so readers know the file
+/// is generated and how to regenerate it. Kept in code so the
+/// `dump-schema` binary and the drift-detection test agree on its
+/// exact contents (down to trailing newlines).
+pub const SDL_HEADER: &str = "\
+# TokioNotes — GraphQL schema (SDL)
+#
+# AUTO-GENERATED from the code-first definitions in
+# `crates/gateway/src/schema.rs`. Do not edit by hand: changes will be
+# overwritten the next time the test suite (or `dump-schema` binary) runs.
+#
+# To regenerate after editing the Rust schema:
+#     cargo run -p tn-gateway --bin dump-schema > graphql/schema.graphql
+# or simply:
+#     BLESS_SDL=1 cargo test -p tn-gateway schema_sdl_matches_disk
+#
+# CI runs the same test without `BLESS_SDL`, so the file always matches
+# the live schema.
+
+";
+
 pub fn build_schema(state: AppState) -> AppSchema {
     Schema::build(QueryRoot, MutationRoot, SubscriptionRoot)
         .data(state)
@@ -444,6 +465,32 @@ mod tests {
     use super::*;
     use async_graphql::Request;
     use serde_json::json;
+
+    /// Drift guard: the on-disk SDL in `graphql/schema.graphql` must match
+    /// what the code-first schema produces. Run with `BLESS_SDL=1` to
+    /// regenerate the file when you change the Rust schema.
+    #[test]
+    fn schema_sdl_matches_disk() {
+        use std::path::PathBuf;
+        let st = AppState::bootstrap("test-secret");
+        let schema = build_schema(st);
+        let generated = format!("{}{}", SDL_HEADER, schema.sdl());
+        // CARGO_MANIFEST_DIR -> crates/gateway, so go up two levels.
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.pop();
+        path.pop();
+        path.push("graphql/schema.graphql");
+        if std::env::var("BLESS_SDL").is_ok() {
+            std::fs::write(&path, &generated).expect("write graphql/schema.graphql");
+            return;
+        }
+        let on_disk = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+        assert_eq!(
+            on_disk, generated,
+            "graphql/schema.graphql is stale; rerun with `BLESS_SDL=1 cargo test -p tn-gateway schema_sdl_matches_disk` or `cargo run -p tn-gateway --bin dump-schema > graphql/schema.graphql`"
+        );
+    }
 
     fn schema_and_state() -> (AppSchema, AppState) {
         let st = AppState::bootstrap("test-secret");

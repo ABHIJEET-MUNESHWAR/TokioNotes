@@ -1,0 +1,155 @@
+# TokioNotes — GraphQL schema (SDL)
+#
+# AUTO-GENERATED from the code-first definitions in
+# `crates/gateway/src/schema.rs`. Do not edit by hand: changes will be
+# overwritten the next time the test suite (or `dump-schema` binary) runs.
+#
+# To regenerate after editing the Rust schema:
+#     cargo run -p tn-gateway --bin dump-schema > graphql/schema.graphql
+# or simply:
+#     BLESS_SDL=1 cargo test -p tn-gateway schema_sdl_matches_disk
+#
+# CI runs the same test without `BLESS_SDL`, so the file always matches
+# the live schema.
+
+type AgentReportDto {
+	summary: String!
+	tags: [String!]!
+}
+
+type AuthPayload {
+	user: UserDto!
+	token: String!
+}
+
+type CollaboratorDto {
+	userId: UserId!
+	role: Role!
+	displayName: String!
+	email: String!
+}
+
+"""
+Implement the DateTime<Utc> scalar
+
+The input/output is a string in RFC3339 format.
+"""
+scalar DateTime
+
+type MutationRoot {
+	register(email: String!, displayName: String!, password: String!): AuthPayload!
+	login(email: String!, password: String!): AuthPayload!
+	createNote(title: String!): NoteDto!
+	renameNote(id: NoteId!, title: String!): NoteDto!
+	deleteNote(id: NoteId!): Boolean!
+	shareNote(id: NoteId!, email: String!, role: Role!): CollaboratorDto!
+	revokeShare(id: NoteId!, userId: UserId!): Boolean!
+	"""
+	Apply a base64-encoded Y-CRDT update to a note. Returns the new
+	snapshot (base64). Requires at least `Editor` role; viewers are
+	rejected with `Forbidden`.
+	"""
+	applyOps(noteId: NoteId!, updateB64: String!): String!
+}
+
+type NoteDto {
+	id: NoteId!
+	ownerId: UserId!
+	title: String!
+	createdAt: DateTime!
+	updatedAt: DateTime!
+	version: Int!
+	"""
+	Caller's effective role on this note (Owner / Editor / Viewer).
+	"""
+	myRole: Role!
+	"""
+	Base64-encoded Y-CRDT state (latest snapshot).
+	"""
+	snapshotB64: String!
+}
+
+scalar NoteId
+
+"""
+Push notification: a note has just been shared with the recipient.
+Carries enough context to update the recipient's "My notes" view
+without an extra round-trip — the note itself, who shared it, and
+the note's true owner (which usually equals `shared_by` today but
+is exposed separately so we can later support delegated re-sharing).
+"""
+type NoteSharedEvent {
+	note: NoteDto!
+	sharedBy: UserDto!
+	owner: UserDto!
+	role: Role!
+	at: DateTime!
+}
+
+type OpEvent {
+	noteId: NoteId!
+	"""
+	Base64-encoded Y-CRDT update.
+	"""
+	updateB64: String!
+}
+
+type QueryRoot {
+	health: String!
+	me: UserDto!
+	note(id: NoteId!): NoteDto!
+	myNotes: [NoteDto!]!
+	collaborators(id: NoteId!): [CollaboratorDto!]!
+	aiSummary(id: NoteId!): String!
+	aiReport(id: NoteId!, instruction: String!): AgentReportDto!
+}
+
+"""
+ACL role. `Owner` ⊃ `Editor` ⊃ `Viewer`.
+"""
+enum Role {
+	VIEWER
+	EDITOR
+	OWNER
+}
+
+type SubscriptionRoot {
+	"""
+	Stream Y-CRDT updates as they are applied to a note's room.
+	"""
+	noteOps(noteId: NoteId!): OpEvent!
+	"""
+	Notify the *current* user when someone shares a note with them.
+	Backed by the gateway event bus (Redis pub/sub in production), so
+	the recipient's open browser tab gets the update even if the
+	`shareNote` mutation was served by a different gateway replica.
+	"""
+	noteShared: NoteSharedEvent!
+}
+
+type UserDto {
+	id: UserId!
+	email: String!
+	displayName: String!
+	createdAt: DateTime!
+}
+
+scalar UserId
+
+"""
+Directs the executor to include this field or fragment only when the `if` argument is true.
+"""
+directive @include(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+"""
+Directs the executor to skip this field or fragment when the `if` argument is true.
+"""
+directive @skip(if: Boolean!) on FIELD | FRAGMENT_SPREAD | INLINE_FRAGMENT
+"""
+Provides a scalar specification URL for specifying the behavior of custom scalar types.
+"""
+directive @specifiedBy(url: String!) on SCALAR
+schema {
+	query: QueryRoot
+	mutation: MutationRoot
+	subscription: SubscriptionRoot
+}
