@@ -1,7 +1,7 @@
 "use client";
 import { useMutation, useQuery, useSubscription } from "@apollo/client";
 import { notFound } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
 import {
   APPLY_OPS,
@@ -16,12 +16,21 @@ import {
 // ----- CRDT-send debounce knobs --------------------------------------------
 //
 // Each keystroke produces a tiny Yjs update, but the *visible* effect on
-// other tabs only needs to land within ~half a second to feel "live".
+// other tabs only needs to land within ~third of a second to feel "live".
 // We buffer locally and send one cumulative update covering everything
-// since the last successful send. Quiet pauses (>QUIET_MS) flush
-// immediately; continuous typing flushes at most every MAX_MS.
-const SEND_QUIET_MS = 150;
-const SEND_MAX_MS = 600;
+// since the last successful send. Quiet pauses (>QUIET_MS) flush;
+// continuous typing flushes at most every MAX_MS.
+const SEND_QUIET_MS = 300;
+const SEND_MAX_MS = 1500;
+// Flip to `true` (or set window.__TN_DEBUG_DEBOUNCE = true in DevTools)
+// to trace debouncer state transitions in the console.
+const DEBUG_DEBOUNCE =
+  typeof window !== "undefined" &&
+  (process.env.NODE_ENV !== "production" ||
+    (window as any).__TN_DEBUG_DEBOUNCE === true);
+const dlog = (...args: any[]) => {
+  if (DEBUG_DEBOUNCE) console.log("[debounce]", ...args);
+};
 
 function b64encode(bytes: Uint8Array): string {
   let s = "";
@@ -75,23 +84,34 @@ export default function NotePage({ params }: { params: { id: string } }) {
   const doc = docRef.current;
 
   // -------- Send-side debouncer state --------------------------------------
-  // `lastSentSV` is the Yjs state vector at the moment of our last
-  // successful applyOps; the cumulative update we send next is exactly
-  // the diff from that vector to "now". So no matter how many keystrokes
-  // we coalesce, the receiver merges them in a single CRDT apply.
+  // Everything below lives in refs so React re-renders never reset timers
+  // or rebuild the closure that `setTimeout` is holding on to. The hot
+  // path (onChange → mark dirty → arm timer) does not depend on any
+  // React state at all.
   const lastSentSVRef = useRef<Uint8Array | null>(null);
   const quietTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dirtyRef = useRef(false);
   const inFlightRef = useRef(false);
+  const canEditRef = useRef(false);
+  const applyOpsRef = useRef(applyOps);
+  // Keep refs in sync with the latest props/state so the debouncer
+  // closure (created once) can read fresh values without rebuilding.
+  useEffect(() => {
+    canEditRef.current = canEdit;
+  }, [canEdit]);
+  useEffect(() => {
+    applyOpsRef.current = applyOps;
+  }, [applyOps]);
 
-  // If we've finished loading the user's notes and the requested id isn't
-  // among them (deleted, share revoked, or never existed) hand off to the
-  // global 404 page.
-  if (!notesLoading && notesData) {
+  // 404 redirect — done as an effect (not in render) so a transient
+  // cache miss during a mutation can't unmount us mid-keystroke and
+  // wipe the debouncer refs.
+  useEffect(() => {
+    if (notesLoading || !notesData) return;
     const exists = (notesData.myNotes ?? []).some((n: any) => n.id === noteId);
     if (!exists) notFound();
-  }
+  }, [notesLoading, notesData, noteId]);
 
   // 1. Seed the local Y.Doc from the server snapshot exactly once.
   // 2. Track the title for the renameNote mutation.
@@ -144,78 +164,94 @@ export default function NotePage({ params }: { params: { id: string } }) {
   }, [doc]);
 
   /** Send one cumulative applyOps for everything since `lastSentSV`. */
-  const flushSend = useCallback(async () => {
-    if (!canEdit) return;
-    if (inFlightRef.current) return; // a flush is already on the wire
-    if (!dirtyRef.current) return;
-    if (quietTimerRef.current) {
-      clearTimeout(quietTimerRef.current);
-      quietTimerRef.current = null;
-    }
-    if (hardTimerRef.current) {
-      clearTimeout(hardTimerRef.current);
-      hardTimerRef.current = null;
-    }
-    const sv = lastSentSVRef.current ?? new Uint8Array();
-    const upd = Y.encodeStateAsUpdate(doc, sv);
-    if (upd.length === 0) {
-      dirtyRef.current = false;
-      return;
-    }
-    inFlightRef.current = true;
-    setStatus("saving");
-    try {
-      await applyOps({ variables: { noteId, updateB64: b64encode(upd) } });
-      // Advance the baseline only on success. If the call fails we keep
-      // the old SV so the next flush retries the same range plus any
-      // new edits that arrived in the meantime — at-least-once semantics
-      // are safe because Yjs updates are idempotent.
-      lastSentSVRef.current = Y.encodeStateVector(doc);
-      dirtyRef.current = false;
-      setStatus("saved");
-    } catch (err) {
-      console.error("applyOps failed", err);
-      setStatus("error");
-    } finally {
-      inFlightRef.current = false;
-      // If more edits arrived while in flight, schedule another quiet
-      // flush so the trailing burst doesn't wait for the next keystroke.
-      if (dirtyRef.current && !quietTimerRef.current) {
-        quietTimerRef.current = setTimeout(() => {
-          quietTimerRef.current = null;
-          flushSend();
-        }, SEND_QUIET_MS);
-      }
-    }
-  }, [applyOps, canEdit, doc, noteId]);
+  const flushSendRef = useRef<() => Promise<void>>(async () => {});
+  const scheduleSendRef = useRef<() => void>(() => {});
 
-  /** Mark dirty and (re)arm the debounce timers. */
-  const scheduleSend = useCallback(() => {
-    dirtyRef.current = true;
-    if (quietTimerRef.current) clearTimeout(quietTimerRef.current);
-    quietTimerRef.current = setTimeout(() => {
-      quietTimerRef.current = null;
-      flushSend();
-    }, SEND_QUIET_MS);
-    if (!hardTimerRef.current) {
-      hardTimerRef.current = setTimeout(() => {
-        hardTimerRef.current = null;
-        flushSend();
-      }, SEND_MAX_MS);
-    }
-  }, [flushSend]);
-
-  // Flush on unmount so navigating away never loses buffered edits.
+  // Create the debouncer ONCE per noteId/doc. Refs above feed it fresh
+  // values for `canEdit` and the `applyOps` mutation function so we
+  // never need to rebuild this closure on every render.
   useEffect(() => {
-    return () => {
-      if (dirtyRef.current) {
-        // Best-effort fire-and-forget; the page is going away anyway.
-        flushSend();
+    const flush = async () => {
+      if (!canEditRef.current) return;
+      if (inFlightRef.current) {
+        dlog("flush skipped (in flight)");
+        return;
       }
-      if (quietTimerRef.current) clearTimeout(quietTimerRef.current);
-      if (hardTimerRef.current) clearTimeout(hardTimerRef.current);
+      if (!dirtyRef.current) return;
+      if (quietTimerRef.current) {
+        clearTimeout(quietTimerRef.current);
+        quietTimerRef.current = null;
+      }
+      if (hardTimerRef.current) {
+        clearTimeout(hardTimerRef.current);
+        hardTimerRef.current = null;
+      }
+      const sv = lastSentSVRef.current ?? new Uint8Array();
+      const upd = Y.encodeStateAsUpdate(doc, sv);
+      if (upd.length === 0) {
+        dirtyRef.current = false;
+        return;
+      }
+      inFlightRef.current = true;
+      setStatus("saving");
+      dlog("FLUSH applyOps", { bytes: upd.length });
+      try {
+        await applyOpsRef.current({ variables: { noteId, updateB64: b64encode(upd) } });
+        // Advance baseline only on success — Yjs updates are idempotent
+        // so retrying the same range on failure is safe.
+        lastSentSVRef.current = Y.encodeStateVector(doc);
+        dirtyRef.current = false;
+        setStatus("saved");
+      } catch (err) {
+        console.error("applyOps failed", err);
+        setStatus("error");
+      } finally {
+        inFlightRef.current = false;
+        // If more edits arrived while in flight, arm a quiet timer so
+        // the trailing burst doesn't wait for the next keystroke.
+        if (dirtyRef.current && !quietTimerRef.current) {
+          quietTimerRef.current = setTimeout(() => {
+            quietTimerRef.current = null;
+            flush();
+          }, SEND_QUIET_MS);
+        }
+      }
     };
-  }, [flushSend]);
+
+    const schedule = () => {
+      dirtyRef.current = true;
+      if (quietTimerRef.current) clearTimeout(quietTimerRef.current);
+      quietTimerRef.current = setTimeout(() => {
+        quietTimerRef.current = null;
+        dlog("quiet timer fired");
+        flush();
+      }, SEND_QUIET_MS);
+      if (!hardTimerRef.current) {
+        hardTimerRef.current = setTimeout(() => {
+          hardTimerRef.current = null;
+          dlog("hard cap fired");
+          flush();
+        }, SEND_MAX_MS);
+      }
+      dlog("scheduled", { quiet: SEND_QUIET_MS, max: SEND_MAX_MS });
+    };
+
+    flushSendRef.current = flush;
+    scheduleSendRef.current = schedule;
+
+    return () => {
+      // On unmount: best-effort flush of buffered edits before clearing.
+      if (dirtyRef.current) flush();
+      if (quietTimerRef.current) {
+        clearTimeout(quietTimerRef.current);
+        quietTimerRef.current = null;
+      }
+      if (hardTimerRef.current) {
+        clearTimeout(hardTimerRef.current);
+        hardTimerRef.current = null;
+      }
+    };
+  }, [doc, noteId]);
 
   const onBodyChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     if (!canEdit) return;
@@ -235,7 +271,7 @@ export default function NotePage({ params }: { params: { id: string } }) {
     // Don't send yet — the debouncer will batch a burst of keystrokes
     // into a single applyOps call. Local Yjs state already advanced, so
     // the textarea reflects the change immediately via the observer.
-    scheduleSend();
+    scheduleSendRef.current();
   };
 
   const commitTitle = async () => {
@@ -244,7 +280,7 @@ export default function NotePage({ params }: { params: { id: string } }) {
     if (!next || next === savedTitle) return;
     // Make sure any pending body edits land before the rename so users
     // never see a stale snapshot in `myNotes`.
-    if (dirtyRef.current) await flushSend();
+    if (dirtyRef.current) await flushSendRef.current();
     setStatus("saving");
     try {
       await renameNote({ variables: { id: noteId, title: next } });
@@ -293,7 +329,7 @@ export default function NotePage({ params }: { params: { id: string } }) {
             value={body}
             onChange={onBodyChange}
             onBlur={() => {
-              if (dirtyRef.current) flushSend();
+              if (dirtyRef.current) flushSendRef.current();
             }}
             placeholder={canEdit
               ? "Start writing — changes sync live to every collaborator…"
