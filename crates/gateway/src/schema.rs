@@ -5,7 +5,9 @@ use async_graphql::futures_util::Stream;
 use async_graphql::*;
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use chrono::{DateTime, Utc};
+use tn_common::eventbus::EventBus;
 use tn_common::ids::{NoteId, UserId};
+use tn_domain::events::DomainEvent;
 use tn_domain::note::Role;
 use tn_infra::repos::{AclRepo, UserRepo};
 
@@ -60,6 +62,20 @@ pub struct OpEvent {
 pub struct AgentReportDto {
     pub summary: String,
     pub tags: Vec<String>,
+}
+
+/// Push notification: a note has just been shared with the recipient.
+/// Carries enough context to update the recipient's "My notes" view
+/// without an extra round-trip — the note itself, who shared it, and
+/// the note's true owner (which usually equals `shared_by` today but
+/// is exposed separately so we can later support delegated re-sharing).
+#[derive(SimpleObject, Clone)]
+pub struct NoteSharedEvent {
+    pub note: NoteDto,
+    pub shared_by: UserDto,
+    pub owner: UserDto,
+    pub role: Role,
+    pub at: DateTime<Utc>,
 }
 
 // ---------- Auth helper -----------------------------------------------------
@@ -299,6 +315,49 @@ impl SubscriptionRoot {
                 note_id: f.note,
                 update_b64: B64.encode(&f.update),
             })
+        });
+        Ok(s)
+    }
+
+    /// Notify the *current* user when someone shares a note with them.
+    /// Backed by the gateway event bus (Redis pub/sub in production), so
+    /// the recipient's open browser tab gets the update even if the
+    /// `shareNote` mutation was served by a different gateway replica.
+    async fn note_shared(&self, ctx: &Context<'_>) -> Result<impl Stream<Item = NoteSharedEvent>> {
+        let uid = current_user(ctx)?;
+        let st = ctx.data::<AppState>()?.clone();
+        let stream = st.bus.subscribe();
+        let s = stream.filter_map(move |r| {
+            let st = st.clone();
+            async move {
+                let ev = r.ok()?;
+                let (note_id, actor, with_user, role, at) = match ev {
+                    DomainEvent::NoteShared {
+                        note_id,
+                        actor,
+                        with_user,
+                        role,
+                        at,
+                        ..
+                    } => (note_id, actor, with_user, role, at),
+                    _ => return None,
+                };
+                if with_user != uid {
+                    return None;
+                }
+                let n = st.notes.note(uid, note_id).await.ok()?;
+                let owner_id = n.owner_id;
+                let note = st.note_dto(n, uid).await;
+                let shared_by = st.auth_user(actor).await.ok()?;
+                let owner = st.auth_user(owner_id).await.ok()?;
+                Some(NoteSharedEvent {
+                    note,
+                    shared_by,
+                    owner,
+                    role,
+                    at,
+                })
+            }
         });
         Ok(s)
     }

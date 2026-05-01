@@ -20,9 +20,7 @@ use tn_domain::events::DomainEvent;
 use tn_domain::note::{Note, NoteAcl, Role};
 use tn_domain::user::User;
 
-use crate::repos::{AclRepo, EventStore, NoteRepo, UserRepo};
-
-fn map_sqlx(e: sqlx::Error) -> AppError {
+use crate::repos::{AclRepo, EventStore, NoteRepo, SnapshotStore, UserRepo};fn map_sqlx(e: sqlx::Error) -> AppError {
     if let sqlx::Error::Database(db) = &e {
         if db.code().as_deref() == Some("23505") {
             return AppError::Conflict(db.message().to_string());
@@ -417,3 +415,58 @@ impl EventStore for PgEventStore {
         Ok(out)
     }
 }
+
+// -------------------------------------------------------- snapshot store ----
+//
+// Y-CRDT document state per note. We keep one row per note (`seq = 0`)
+// and upsert on every save: the CRDT itself is the journal, and the
+// `domain_events` table records the audit trail of `NoteOpsApplied`, so
+// note_snapshots only needs the latest fully-merged state for fast
+// reload after a gateway restart. Schema (`migrations/0001_initial.sql`)
+// supports historical snapshots via the composite PK `(note_id, seq)`,
+// which we can lean on later if we want point-in-time recovery.
+
+#[derive(Clone)]
+pub struct PgSnapshotStore {
+    pool: PgPool,
+}
+
+impl PgSnapshotStore {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl SnapshotStore for PgSnapshotStore {
+    async fn latest(&self, note: NoteId) -> AppResult<Option<Vec<u8>>> {
+        let row = sqlx::query(
+            "SELECT state FROM note_snapshots
+             WHERE note_id = $1
+             ORDER BY seq DESC
+             LIMIT 1",
+        )
+        .bind(note.into_uuid())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+        Ok(row.map(|r| r.get::<Vec<u8>, _>("state")))
+    }
+
+    async fn save(&self, note: NoteId, state: &[u8]) -> AppResult<()> {
+        sqlx::query(
+            "INSERT INTO note_snapshots (note_id, seq, state, created_at)
+             VALUES ($1, 0, $2, now())
+             ON CONFLICT (note_id, seq) DO UPDATE
+                SET state      = EXCLUDED.state,
+                    created_at = now()",
+        )
+        .bind(note.into_uuid())
+        .bind(state)
+        .execute(&self.pool)
+        .await
+        .map_err(map_sqlx)?;
+        Ok(())
+    }
+}
+

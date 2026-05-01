@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tn_ai_agent_service::AiService;
 use tn_auth_service::AuthService;
 use tn_collab_service::RoomManager;
-use tn_common::eventbus::InProcBus;
+use tn_common::eventbus::{AnyBus, InProcBus};
 use tn_domain::ai::HeuristicAssistant;
 use tn_domain::events::DomainEvent;
 use tn_infra::auth::JwtIssuer;
@@ -13,7 +13,7 @@ use tn_infra::repos::{
 use tn_notes_service::NotesService;
 
 pub type Notes =
-    NotesService<AnyUserRepo, AnyNoteRepo, AnyAclRepo, AnyEventStore, InProcBus<DomainEvent>>;
+    NotesService<AnyUserRepo, AnyNoteRepo, AnyAclRepo, AnyEventStore, AnyBus<DomainEvent>>;
 pub type Auth = AuthService<AnyUserRepo>;
 pub type Ai = AiService<HeuristicAssistant>;
 
@@ -24,7 +24,7 @@ pub struct AppState {
     pub notes: Arc<Notes>,
     pub rooms: RoomManager,
     pub ai: Arc<Ai>,
-    pub bus: Arc<InProcBus<DomainEvent>>,
+    pub bus: Arc<AnyBus<DomainEvent>>,
     pub users: Arc<AnyUserRepo>,
 }
 
@@ -39,7 +39,7 @@ impl AppState {
         let notes = Arc::new(backends.notes);
         let acls = Arc::new(backends.acls);
         let events = Arc::new(backends.events);
-        let bus = Arc::new(InProcBus::<DomainEvent>::new(2048));
+        let bus = Arc::new(build_bus());
 
         let auth = Arc::new(AuthService::new(
             users.clone(),
@@ -63,6 +63,31 @@ impl AppState {
             users,
         }
     }
+}
+
+/// Pick the event-bus transport. With `REDIS_URL` set, we use Redis
+/// pub/sub so notification events (e.g. `NoteShared`) reach websocket
+/// subscribers on every gateway replica. Without it, fall back to the
+/// in-process broadcast — ideal for tests and single-node dev.
+fn build_bus() -> AnyBus<DomainEvent> {
+    if let Ok(url) = std::env::var("REDIS_URL") {
+        if !url.is_empty() {
+            match tn_common::redis_bus::RedisBus::<DomainEvent>::connect(
+                &url,
+                tn_common::redis_bus::DEFAULT_CHANNEL,
+            ) {
+                Ok(bus) => {
+                    tracing::info!(target: "tn-gateway", "event bus: redis pubsub");
+                    return AnyBus::Redis(bus);
+                }
+                Err(e) => {
+                    tracing::error!(error=%e, "redis bus init failed, falling back to in-proc");
+                }
+            }
+        }
+    }
+    tracing::warn!("REDIS_URL not set — using in-process event bus");
+    AnyBus::InProc(InProcBus::<DomainEvent>::new(2048))
 }
 
 struct Backends {

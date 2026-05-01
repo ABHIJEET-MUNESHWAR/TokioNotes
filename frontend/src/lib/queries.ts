@@ -74,6 +74,18 @@ export const NOTE_OPS = gql`
   }
 `;
 
+export const NOTE_SHARED = gql`
+  subscription NoteShared {
+    noteShared {
+      role
+      at
+      sharedBy { id email displayName }
+      owner    { id email displayName }
+      note     { id title updatedAt myRole snapshotB64 }
+    }
+  }
+`;
+
 export const AI_SUMMARY = gql`
   query AiSummary($id: NoteId!) { aiSummary(id: $id) }
 `;

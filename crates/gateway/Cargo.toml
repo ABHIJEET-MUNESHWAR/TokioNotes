@@ -8,7 +8,7 @@ name = "tn-gateway"
 path = "src/main.rs"
 
 [dependencies]
-tn-common = { path = "../common" }
+tn-common = { path = "../common", features = ["redis"] }
 tn-domain = { path = "../domain" }
 tn-infra  = { path = "../infra", features = ["postgres"] }
 tn-auth-service   = { path = "../auth-service" }

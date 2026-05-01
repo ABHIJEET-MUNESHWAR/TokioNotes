@@ -44,6 +44,16 @@ pub trait EventStore: Send + Sync {
     async fn list(&self) -> AppResult<Vec<DomainEvent>>;
 }
 
+/// Persists Y-CRDT document state for a note. Implementations can choose
+/// how to track history (single latest row vs append-only log of seq'd
+/// snapshots); both `latest` and `save` operate on the *full* encoded
+/// state so callers don't need to know.
+#[async_trait]
+pub trait SnapshotStore: Send + Sync {
+    async fn latest(&self, note: NoteId) -> AppResult<Option<Vec<u8>>>;
+    async fn save(&self, note: NoteId, state: &[u8]) -> AppResult<()>;
+}
+
 // ---------- In-memory implementations ---------------------------------------
 
 #[derive(Default, Clone)]
@@ -189,6 +199,22 @@ impl EventStore for InMemoryEventStore {
             .into_iter()
             .filter_map(|k| self.events.get(&k).map(|v| v.clone()))
             .collect())
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct InMemorySnapshotStore {
+    map: Arc<DashMap<NoteId, Vec<u8>>>,
+}
+
+#[async_trait]
+impl SnapshotStore for InMemorySnapshotStore {
+    async fn latest(&self, note: NoteId) -> AppResult<Option<Vec<u8>>> {
+        Ok(self.map.get(&note).map(|v| v.clone()))
+    }
+    async fn save(&self, note: NoteId, state: &[u8]) -> AppResult<()> {
+        self.map.insert(note, state.to_vec());
+        Ok(())
     }
 }
 
@@ -360,6 +386,35 @@ impl EventStore for AnyEventStore {
             Self::Mem(r) => r.list().await,
             #[cfg(feature = "postgres")]
             Self::Pg(r) => r.list().await,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub enum AnySnapshotStore {
+    Mem(InMemorySnapshotStore),
+    #[cfg(feature = "postgres")]
+    Pg(crate::pg::PgSnapshotStore),
+}
+impl Default for AnySnapshotStore {
+    fn default() -> Self {
+        Self::Mem(InMemorySnapshotStore::default())
+    }
+}
+#[async_trait]
+impl SnapshotStore for AnySnapshotStore {
+    async fn latest(&self, note: NoteId) -> AppResult<Option<Vec<u8>>> {
+        match self {
+            Self::Mem(r) => r.latest(note).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.latest(note).await,
+        }
+    }
+    async fn save(&self, note: NoteId, state: &[u8]) -> AppResult<()> {
+        match self {
+            Self::Mem(r) => r.save(note, state).await,
+            #[cfg(feature = "postgres")]
+            Self::Pg(r) => r.save(note, state).await,
         }
     }
 }

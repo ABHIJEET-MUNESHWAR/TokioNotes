@@ -61,6 +61,52 @@ where
 
 pub type SharedBus<E> = Arc<InProcBus<E>>;
 
+// ----- Storage-agnostic enum wrapper ---------------------------------------
+//
+// Lets the gateway pick a transport at boot time (in-process for tests &
+// single-replica deploys, Redis pub/sub for multi-replica) without making
+// `NotesService` generic-bound proliferate at every call site.
+
+#[derive(Clone)]
+pub enum AnyBus<E>
+where
+    E: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
+{
+    InProc(InProcBus<E>),
+    #[cfg(feature = "redis")]
+    Redis(crate::redis_bus::RedisBus<E>),
+}
+
+impl<E> Default for AnyBus<E>
+where
+    E: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
+{
+    fn default() -> Self {
+        Self::InProc(InProcBus::default())
+    }
+}
+
+#[async_trait]
+impl<E> EventBus<E> for AnyBus<E>
+where
+    E: Clone + Send + Sync + Serialize + DeserializeOwned + 'static,
+{
+    async fn publish(&self, event: E) -> AppResult<()> {
+        match self {
+            Self::InProc(b) => b.publish(event).await,
+            #[cfg(feature = "redis")]
+            Self::Redis(b) => b.publish(event).await,
+        }
+    }
+    fn subscribe(&self) -> std::pin::Pin<Box<dyn Stream<Item = AppResult<E>> + Send>> {
+        match self {
+            Self::InProc(b) => b.subscribe(),
+            #[cfg(feature = "redis")]
+            Self::Redis(b) => b.subscribe(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

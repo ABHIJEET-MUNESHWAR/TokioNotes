@@ -175,6 +175,7 @@ where
         self.emit(DomainEvent::NoteShared {
             id: EventId::new(),
             note_id: note,
+            actor,
             with_user: target.id,
             role,
             at: Utc::now(),

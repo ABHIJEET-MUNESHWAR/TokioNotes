@@ -1,7 +1,7 @@
 "use client";
-import { useMutation, useQuery } from "@apollo/client";
+import { useMutation, useQuery, useSubscription } from "@apollo/client";
 import { useEffect, useState } from "react";
-import { CREATE_NOTE, LOGIN, MY_NOTES, REGISTER } from "@/lib/queries";
+import { CREATE_NOTE, LOGIN, MY_NOTES, NOTE_SHARED, REGISTER } from "@/lib/queries";
 
 function AuthBox({ onAuth }: { onAuth: () => void }) {
   const [email, setEmail] = useState("");
@@ -83,6 +83,40 @@ function NotesList() {
   const { data, loading, refetch } = useQuery(MY_NOTES);
   const [createNote] = useMutation(CREATE_NOTE);
   const [title, setTitle] = useState("");
+  // Last few share-with-me notifications (newest first). Each one auto-
+  // dismisses after a short delay so the list never grows unbounded.
+  type ShareToast = {
+    key: string;
+    title: string;
+    sharedBy: string;
+    owner: string;
+    role: string;
+  };
+  const [toasts, setToasts] = useState<ShareToast[]>([]);
+
+  // Live push from the gateway: someone just shared a note with this user.
+  // We refetch `myNotes` so the new note appears, and surface a banner
+  // identifying the sharer and the note's true owner.
+  useSubscription(NOTE_SHARED, {
+    onData: ({ data: { data } }) => {
+      const ev = data?.noteShared;
+      if (!ev) return;
+      const t: ShareToast = {
+        key: `${ev.note.id}-${ev.at ?? Date.now()}`,
+        title: ev.note.title,
+        sharedBy:
+          ev.sharedBy?.displayName || ev.sharedBy?.email || "someone",
+        owner: ev.owner?.displayName || ev.owner?.email || "unknown",
+        role: ev.role,
+      };
+      setToasts((prev) => [t, ...prev].slice(0, 5));
+      refetch();
+      // Auto-dismiss after 8s.
+      setTimeout(() => {
+        setToasts((prev) => prev.filter((x) => x.key !== t.key));
+      }, 8000);
+    },
+  });
 
   const create = async () => {
     if (!title.trim()) return;
@@ -93,6 +127,28 @@ function NotesList() {
 
   return (
     <div className="tn-container tn-stack">
+      {toasts.length > 0 && (
+        <div className="tn-stack" style={{ gap: 8 }}>
+          {toasts.map((t) => (
+            <div
+              key={t.key}
+              className="tn-card"
+              style={{
+                borderLeft: "4px solid var(--brand)",
+                padding: "10px 14px",
+              }}
+            >
+              <strong>{t.sharedBy}</strong> shared{" "}
+              <strong>“{t.title}”</strong> with you as{" "}
+              <em>{String(t.role).toLowerCase()}</em>.
+              {t.owner && t.owner !== t.sharedBy && (
+                <span className="tn-muted"> Owner: {t.owner}.</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="tn-card tn-stack">
         <h2 style={{ margin: 0 }}>Create note</h2>
         <span className="tn-section-label">Title</span>

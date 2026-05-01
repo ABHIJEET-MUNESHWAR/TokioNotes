@@ -31,6 +31,9 @@ pub enum DomainEvent {
     NoteShared {
         id: EventId,
         note_id: NoteId,
+        /// User who performed the share (typically the owner).
+        actor: UserId,
+        /// Recipient of the new ACL grant.
         with_user: UserId,
         role: Role,
         at: DateTime<Utc>,
