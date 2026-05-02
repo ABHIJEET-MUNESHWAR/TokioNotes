@@ -2,8 +2,8 @@
 **/*.rs.bk
 .env
 .env.local
-node_modules
-.next
+frontend/node_modules
+frontend/.next
 out
 dist
 *.log
