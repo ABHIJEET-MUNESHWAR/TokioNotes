@@ -1,10 +1,27 @@
 # TokioNotes 📝⚡
 > Real-time, multi-user collaborative notes platform built on **Rust + Tokio**, with **CQRS / event-driven micro-services**, **Y-CRDT co-editing**, **Actix-Web + GraphQL** API (Query / Mutation / Subscription), **Argon2 + JWT** auth, an **agentic AI** assistant, and a **Next.js** frontend.
+
+---
+## 🎬 Demo
+
+A short walkthrough of registration, note creation, sharing, and live collaborative editing:
+
+https://github.com/abhijeetmuneshwar/TokioNotes/raw/main/video/Tokio-Notes.mp4
+
+> If the inline player above does not render on your Markdown viewer, the file lives at [`./video/Tokio-Notes.mp4`](./video/Tokio-Notes.mp4) — download or open it locally.
+
+<p align="center">
+  <video src="./video/Tokio-Notes.mp4" controls width="720">
+    Your browser does not support inline video — see <a href="./video/Tokio-Notes.mp4">./video/Tokio-Notes.mp4</a>.
+  </video>
+</p>
+
 ---
 ## 📑 Table of contents
 
-1. [✨ Features](#-features)
-2. [🏛 Architecture](#-architecture)
+1. [🎬 Demo](#-demo)
+2. [✨ Features](#-features)
+3. [🏛 Architecture](#-architecture)
    - [Layered view](#layered-view)
    - [Components — What / How / Why](#components--what--how--why)
      - [Layer 1 — Presentation (`frontend/`)](#layer-1--presentation-frontend)
@@ -14,13 +31,13 @@
      - [Layer 5 — Infrastructure (`crates/infra`)](#layer-5--infrastructure-cratesinfra)
      - [Layer 6 — Cross-cutting (`crates/common`)](#layer-6--cross-cutting-cratescommon)
    - [Dependency graph](#dependency-graph)
-3. [📦 Workspace layout](#-workspace-layout)
-4. [🚀 Quick start (no Postgres required)](#-quick-start-no-postgres-required)
+4. [📦 Workspace layout](#-workspace-layout)
+5. [🚀 Quick start (no Postgres required)](#-quick-start-no-postgres-required)
    - [Docker Compose (with Postgres + Redis)](#docker-compose-with-postgres--redis)
    - [👥 Sharing notes & collaborating in real time](#-sharing-notes--collaborating-in-real-time)
-5. [🧪 Testing](#-testing)
-6. [📡 GraphQL surface](#-graphql-surface)
-7. [🛠 How It Works](#-how-it-works)
+6. [🧪 Testing](#-testing)
+7. [📡 GraphQL surface](#-graphql-surface)
+8. [🛠 How It Works](#-how-it-works)
    - [Process startup](#process-startup)
    - [Authentication pipeline](#authentication-pipeline)
    - [External flows (GraphQL API)](#external-flows-graphql-api)
@@ -45,17 +62,17 @@
      - [E. Error mapping](#e-error-mapping)
      - [F. Observability](#f-observability)
      - [G. Frontend co-edit loop](#g-frontend-co-edit-loop)
-   - [End-to-end trace: Alice shares with Bob](#end-to-end-trace-alice-shares-with-bob-both-edit-live)
-8. [⚙️ Configuration](#️-configuration)
-9. [🧠 Idiomatic patterns leveraged](#-idiomatic-patterns-leveraged)
-10. [📈 Performance & complexity](#-performance--complexity)
-11. [🛡 Fault tolerance](#-fault-tolerance)
-12. [🔐 Security](#-security)
-13. [🤖 CI/CD](#-cicd)
-14. [🪞 Self-evaluation](#-self-evaluation)
+    - [End-to-end trace: Alice shares with Bob](#end-to-end-trace-alice-shares-with-bob-both-edit-live)
+9. [⚙️ Configuration](#️-configuration)
+10. [🧠 Idiomatic patterns leveraged](#-idiomatic-patterns-leveraged)
+11. [📈 Performance & complexity](#-performance--complexity)
+12. [🛡 Fault tolerance](#-fault-tolerance)
+13. [🔐 Security](#-security)
+14. [🤖 CI/CD](#-cicd)
+15. [🪞 Self-evaluation](#-self-evaluation)
     - [🔭 Roadmap improvements](#-roadmap-improvements)
-15. [📜 License](#-license)
-16. [🧪 Postman](#-postman)
+16. [📜 License](#-license)
+17. [🧪 Postman](#-postman)
 
 ---
 ## ✨ Features
