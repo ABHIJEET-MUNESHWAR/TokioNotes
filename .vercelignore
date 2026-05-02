@@ -1,0 +1,12 @@
+node_modules
+.next
+.nuxt
+dist
+build
+out
+.cache
+coverage
+*.log
+.git
+.vscode
+.idea

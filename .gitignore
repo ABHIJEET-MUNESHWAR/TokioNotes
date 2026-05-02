@@ -12,3 +12,4 @@ dist
 .vscode
 coverage
 
+.vercel
